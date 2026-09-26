@@ -1,0 +1,23 @@
+services:
+  db:
+    image: postgres:17
+    pull_policy: never
+    container_name: lucas-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lucas
+      POSTGRES_PASSWORD: lucas
+      POSTGRES_DB: lucas
+    ports:
+      # 5433 para no chocar con el Postgres que ya corre en 5432
+      - '5433:5432'
+    volumes:
+      - lucas-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U lucas -d lucas']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  lucas-db-data:
