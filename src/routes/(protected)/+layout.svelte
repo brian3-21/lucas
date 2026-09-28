@@ -18,24 +18,16 @@
 		SidebarProvider,
 		SidebarTrigger
 	} from '$lib/components/ui/sidebar';
-	import {
-		LayoutDashboard,
-		Landmark,
-		LogOut,
-		PiggyBank,
-		Receipt,
-		Wallet
-	} from '@lucide/svelte';
+	import { LayoutDashboard, LogOut, Wallet } from '@lucide/svelte';
 	import type { Snippet } from 'svelte';
 
 	let { data, children }: { data: { user: { name: string; email: string } }; children: Snippet } =
 		$props();
-	const navegacion = [
-		{ titulo: 'Resumen', href: '/', icono: LayoutDashboard },
-		{ titulo: 'Cuentas', href: '/cuentas', icono: Landmark },
-		{ titulo: 'Movimientos', href: '/movimientos', icono: Receipt },
-		{ titulo: 'Presupuestos', href: '/presupuestos', icono: PiggyBank }
-	];
+
+	// Solo el resumen por ahora. Cuentas, movimientos y presupuestos están
+	// pensados, pero todavía no: hay que decidir el modelo antes de enlazar
+	// a rutas que no existen.
+	const navegacion = [{ titulo: 'Resumen', href: '/', icono: LayoutDashboard }];
 
 	const iniciales = $derived(
 		data.user.name
