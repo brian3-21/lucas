@@ -3,6 +3,23 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Transiciones suaves entre páginas. Es una función nativa del navegador, sin
+ * JS. El sitio entero se ve afectado, así que hay que desactivarla para quien
+ * haya pedido menos movimiento en el sistema.
+ */
+@view-transition {
+	navigation: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	::view-transition-group(*),
+	::view-transition-old(*),
+	::view-transition-new(*) {
+		animation: none !important;
+	}
+}
+
 :root {
 	--radius: 0.625rem;
 

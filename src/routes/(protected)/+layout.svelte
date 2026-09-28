@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import ThemeSwitcher from '$lib/components/theme-switcher.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Separator } from '$lib/components/ui/separator';
 	import {
@@ -107,12 +108,15 @@
 				</div>
 			</div>
 			<Separator />
-			<form method="POST" action="/logout">
-				<Button type="submit" variant="ghost" class="w-full justify-start gap-2">
-					<LogOut />
-					<span class="group-data-[collapsible=icon]:hidden">Cerrar sesión</span>
-				</Button>
-			</form>
+			<div class="flex items-center gap-1">
+				<form method="POST" action="/logout" class="flex-1">
+					<Button type="submit" variant="ghost" class="w-full justify-start gap-2">
+						<LogOut />
+						<span class="group-data-[collapsible=icon]:hidden">Cerrar sesión</span>
+					</Button>
+				</form>
+				<ThemeSwitcher class="group-data-[collapsible=icon]:hidden" />
+			</div>
 		</SidebarFooter>
 	</Sidebar>
 
