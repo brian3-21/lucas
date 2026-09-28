@@ -1,4 +1,4 @@
-import { redirect, type Handle } from '@sveltejs/kit';
+import { redirect, type Handle, type HandleServerError } from '@sveltejs/kit';
 import {
 	SESSION_COOKIE_NAME,
 	refreshSessionTokenCookie,
@@ -40,4 +40,21 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 
 	return resolve(event);
+};
+
+/**
+ * SvelteKit captura cualquier excepción no controlada de un load o de una form
+ * action y la pasa por aquí. Sin esto, un fallo en producción llega al
+ * navegador como una página en blanco y al log del servidor como un WARNING.
+ */
+export const handleError: HandleServerError = ({ error, event, status }) => {
+	// Los 404 son ruido esperado (enlaces viejos, escáneres) y no interesa
+	// ensuciar el log. Todo lo demás sí: es un error que hay que mirar.
+	if (status !== 404) {
+		console.error(`[${status}] ${event.request.method} ${event.url.pathname}`, error);
+	}
+
+	// Lo que se devuelve es lo que ve el usuario, así que nunca el detalle
+	// interno: en producción `error.message` puede traer datos de la consulta.
+	return { message: status === 404 ? 'Página no encontrada' : 'Error inesperado' };
 };
