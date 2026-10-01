@@ -12,6 +12,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 export const transactionType = pgEnum('transaction_type', ['income', 'expense']);
+export const bucketKind = pgEnum('bucket_kind', ['short_term', 'medium_term', 'long_term']);
 
 export const users = pgTable(
 	'users',
@@ -21,6 +22,10 @@ export const users = pgTable(
 		passwordHash: text('password_hash').notNull(),
 		name: text('name').notNull(),
 		baseCurrency: text('base_currency').notNull().default('EUR'),
+		// Porcentajes de reparto de cada ingreso entre los bolsillos.
+		splitShort: numeric('split_short', { precision: 5, scale: 2 }).notNull().default('60'),
+		splitMedium: numeric('split_medium', { precision: 5, scale: 2 }).notNull().default('25'),
+		splitLong: numeric('split_long', { precision: 5, scale: 2 }).notNull().default('15'),
 		createdAt: timestamp('created_at', { withTimezone: true })
 			.notNull()
 			.defaultNow()
@@ -102,11 +107,36 @@ export const goals = pgTable(
 	(t) => [index('goals_user_id_idx').on(t.userId)]
 );
 
+// Libro mayor de repartos: cada ingreso genera una fila por bolsillo.
+// Los totales de las tarjetas son SUM(amount) GROUP BY bucket.
+export const bucketAllocations = pgTable(
+	'bucket_allocations',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		movementId: uuid('movement_id')
+			.notNull()
+			.references(() => movements.id, { onDelete: 'cascade' }),
+		bucket: bucketKind('bucket').notNull(),
+		amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true })
+			.notNull()
+			.defaultNow()
+	},
+	(t) => [
+		index('bucket_allocations_user_id_idx').on(t.userId),
+		index('bucket_allocations_movement_id_idx').on(t.movementId)
+	]
+);
+
 export const usersRelations = relations(users, ({ many }) => ({
 	sessions: many(sessions),
 	categories: many(categories),
 	movements: many(movements),
-	goals: many(goals)
+	goals: many(goals),
+	bucketAllocations: many(bucketAllocations)
 }));
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
@@ -118,16 +148,25 @@ export const categoriesRelations = relations(categories, ({ one, many }) => ({
 	movements: many(movements)
 }));
 
-export const movementsRelations = relations(movements, ({ one }) => ({
+export const movementsRelations = relations(movements, ({ one, many }) => ({
 	user: one(users, { fields: [movements.userId], references: [users.id] }),
 	category: one(categories, {
 		fields: [movements.categoryId],
 		references: [categories.id]
-	})
+	}),
+	bucketAllocations: many(bucketAllocations)
 }));
 
 export const goalsRelations = relations(goals, ({ one }) => ({
 	user: one(users, { fields: [goals.userId], references: [users.id] })
+}));
+
+export const bucketAllocationsRelations = relations(bucketAllocations, ({ one }) => ({
+	user: one(users, { fields: [bucketAllocations.userId], references: [users.id] }),
+	movement: one(movements, {
+		fields: [bucketAllocations.movementId],
+		references: [movements.id]
+	})
 }));
 
 export type User = typeof users.$inferSelect;
@@ -135,11 +174,19 @@ export type Session = typeof sessions.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Movement = typeof movements.$inferSelect;
 export type Goal = typeof goals.$inferSelect;
+export type BucketAllocation = typeof bucketAllocations.$inferSelect;
 export type TransactionType = (typeof transactionType.enumValues)[number];
+export type BucketKind = (typeof bucketKind.enumValues)[number];
 
 export const TRANSACTION_TYPE_LABELS: Record<TransactionType, string> = {
 	income: 'Ingreso',
 	expense: 'Gasto'
+};
+
+export const BUCKET_KIND_LABELS: Record<BucketKind, string> = {
+	short_term: 'Corto plazo',
+	medium_term: 'Mediano plazo',
+	long_term: 'Largo plazo'
 };
 
 export const DEFAULT_CATEGORIES: { name: string; kind: TransactionType; color: string }[] = [

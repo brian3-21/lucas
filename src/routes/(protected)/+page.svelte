@@ -71,22 +71,28 @@
 <div class="grid gap-4 sm:grid-cols-3">
 	<Card>
 		<CardHeader>
-			<CardDescription>Patrimonio total</CardDescription>
-			<CardTitle class="tabular text-3xl">—</CardTitle>
+			<CardDescription>Corto plazo</CardDescription>
+			<CardTitle class="tabular text-3xl">
+				{formatoMoneda.format(data.bucketTotals.short_term)}
+			</CardTitle>
 		</CardHeader>
 	</Card>
 
 	<Card>
 		<CardHeader>
-			<CardDescription>Ahorrado este mes</CardDescription>
-			<CardTitle class="tabular text-3xl">—</CardTitle>
+			<CardDescription>Mediano plazo</CardDescription>
+			<CardTitle class="tabular text-3xl">
+				{formatoMoneda.format(data.bucketTotals.medium_term)}
+			</CardTitle>
 		</CardHeader>
 	</Card>
 
 	<Card>
 		<CardHeader>
-			<CardDescription>Gastado este mes</CardDescription>
-			<CardTitle class="tabular text-3xl">—</CardTitle>
+			<CardDescription>Largo plazo</CardDescription>
+			<CardTitle class="tabular text-3xl">
+				{formatoMoneda.format(data.bucketTotals.long_term)}
+			</CardTitle>
 		</CardHeader>
 	</Card>
 </div>

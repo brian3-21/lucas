@@ -1,7 +1,14 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sum } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { categories, movements } from '$lib/server/db/schema';
+import {
+	bucketAllocations,
+	categories,
+	movements,
+	users,
+	type BucketKind
+} from '$lib/server/db/schema';
+import { splitAmount } from '$lib/buckets';
 import { incomeSchema } from '$lib/validation/movements';
 import { fieldErrors, pick, type FieldErrors } from '$lib/forms';
 import type { Actions, PageServerLoad } from './$types';
@@ -11,7 +18,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	if (!locals.user) redirect(303, '/login');
 	const userId = locals.user.id;
 
-	const [incomeCategories, recentMovements] = await Promise.all([
+	const [incomeCategories, recentMovements, sumasPorBolsillo] = await Promise.all([
 		db
 			.select()
 			.from(categories)
@@ -22,10 +29,27 @@ export const load: PageServerLoad = async ({ locals }) => {
 			with: { category: true },
 			orderBy: [desc(movements.date), desc(movements.createdAt)],
 			limit: 10
-		})
+		}),
+		db
+			.select({
+				bucket: bucketAllocations.bucket,
+				total: sum(bucketAllocations.amount).mapWith(Number)
+			})
+			.from(bucketAllocations)
+			.where(eq(bucketAllocations.userId, userId))
+			.groupBy(bucketAllocations.bucket)
 	]);
 
-	return { incomeCategories, recentMovements };
+	const bucketTotals: Record<BucketKind, number> = {
+		short_term: 0,
+		medium_term: 0,
+		long_term: 0
+	};
+	for (const fila of sumasPorBolsillo) {
+		bucketTotals[fila.bucket] = fila.total;
+	}
+
+	return { incomeCategories, recentMovements, bucketTotals };
 };
 
 export const actions: Actions = {
@@ -73,14 +97,53 @@ export const actions: Actions = {
 			}
 		}
 
-		await db.insert(movements).values({
-			userId,
-			type: 'income',
-			// numeric se guarda como string; toFixed fija los 2 decimales.
-			amount: amount.toFixed(2),
-			date,
-			description: description ?? null,
-			categoryId: categoryId ?? null
+		const [usuario] = await db
+			.select({ splitShort: users.splitShort, splitMedium: users.splitMedium })
+			.from(users)
+			.where(eq(users.id, userId))
+			.limit(1);
+
+		// numeric llega como string; fallback a los defaults por robustez.
+		const reparto = splitAmount(amount, {
+			short: Number(usuario?.splitShort ?? 60),
+			medium: Number(usuario?.splitMedium ?? 25)
+		});
+
+		// El movimiento y sus tres repartos se guardan juntos o no se guarda nada.
+		await db.transaction(async (tx) => {
+			const [movimiento] = await tx
+				.insert(movements)
+				.values({
+					userId,
+					type: 'income',
+					// numeric se guarda como string; toFixed fija los 2 decimales.
+					amount: amount.toFixed(2),
+					date,
+					description: description ?? null,
+					categoryId: categoryId ?? null
+				})
+				.returning({ id: movements.id });
+
+			await tx.insert(bucketAllocations).values([
+				{
+					userId,
+					movementId: movimiento.id,
+					bucket: 'short_term',
+					amount: reparto.short_term.toFixed(2)
+				},
+				{
+					userId,
+					movementId: movimiento.id,
+					bucket: 'medium_term',
+					amount: reparto.medium_term.toFixed(2)
+				},
+				{
+					userId,
+					movementId: movimiento.id,
+					bucket: 'long_term',
+					amount: reparto.long_term.toFixed(2)
+				}
+			]);
 		});
 
 		return { success: true };
