@@ -68,7 +68,7 @@
 		<p class="text-sm text-muted-foreground">Panel</p>
 		<h1 class="text-3xl font-semibold tracking-tight">Resumen</h1>
 	</div>
-	<Button onclick={() => (abierto = true)}>
+	<Button class="cursor-pointer" onclick={() => (abierto = true)}>
 		<Plus />
 		Añadir ingreso
 	</Button>
