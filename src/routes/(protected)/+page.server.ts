@@ -106,7 +106,7 @@ export const actions: Actions = {
 		// numeric llega como string; fallback a los defaults por robustez.
 		const reparto = splitAmount(amount, {
 			short: Number(usuario?.splitShort ?? 60),
-			medium: Number(usuario?.splitMedium ?? 25)
+			medium: Number(usuario?.splitMedium ?? 30)
 		});
 
 		// El movimiento y sus tres repartos se guardan juntos o no se guarda nada.

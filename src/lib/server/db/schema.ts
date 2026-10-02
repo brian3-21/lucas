@@ -1,5 +1,6 @@
 import { relations, sql } from 'drizzle-orm';
 import {
+	check,
 	date,
 	index,
 	numeric,
@@ -25,15 +26,24 @@ export const users = pgTable(
 		passwordHash: text('password_hash').notNull(),
 		name: text('name').notNull(),
 		baseCurrency: text('base_currency').notNull().default('CUP'),
-		// Porcentajes de reparto de cada ingreso entre los bolsillos.
+		// Porcentajes de reparto de cada ingreso entre los bolsillos. Siempre
+		// múltiplos de 10 y sumando 100; la BD lo exige con dos CHECK, así que
+		// cualquier escritura que se salga de ahí revienta en vez de colarse.
 		splitShort: numeric('split_short', { precision: 5, scale: 2 }).notNull().default('60'),
-		splitMedium: numeric('split_medium', { precision: 5, scale: 2 }).notNull().default('25'),
-		splitLong: numeric('split_long', { precision: 5, scale: 2 }).notNull().default('15'),
+		splitMedium: numeric('split_medium', { precision: 5, scale: 2 }).notNull().default('30'),
+		splitLong: numeric('split_long', { precision: 5, scale: 2 }).notNull().default('10'),
 		createdAt: timestamp('created_at', { withTimezone: true })
 			.notNull()
 			.defaultNow()
 	},
-	(t) => [uniqueIndex('users_email_idx').on(sql`lower(${t.email})`)]
+	(t) => [
+		uniqueIndex('users_email_idx').on(sql`lower(${t.email})`),
+		check(
+			'users_split_multiples_of_10',
+			sql`${t.splitShort} % 10 = 0 AND ${t.splitMedium} % 10 = 0 AND ${t.splitLong} % 10 = 0`
+		),
+		check('users_split_sums_to_100', sql`${t.splitShort} + ${t.splitMedium} + ${t.splitLong} = 100`)
+	]
 );
 
 export const sessions = pgTable(
