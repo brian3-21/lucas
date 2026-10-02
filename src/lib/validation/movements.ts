@@ -15,3 +15,7 @@ export const incomeSchema = z.object({
 });
 
 export type IncomeData = z.infer<typeof incomeSchema>;
+
+// El id llega de un <input type="hidden"> controlado por el cliente, así que se
+// valida como cualquier otro dato: si no es un uuid, la consulta no llega a ejecutarse.
+export const movementIdSchema = z.uuid('Movimiento no válido');

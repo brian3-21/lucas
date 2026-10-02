@@ -1,8 +1,19 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { toast } from 'svelte-sonner';
+	import {
+		AlertDialog,
+		AlertDialogAction,
+		AlertDialogCancel,
+		AlertDialogContent,
+		AlertDialogDescription,
+		AlertDialogFooter,
+		AlertDialogHeader,
+		AlertDialogTitle,
+		AlertDialogTrigger
+	} from '$lib/components/ui/alert-dialog';
 	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
+	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { Card, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import {
 		Dialog,
@@ -22,7 +33,8 @@
 	import { Field, FieldError, FieldGroup, FieldLabel } from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
 	import { NativeSelect, NativeSelectOption } from '$lib/components/ui/native-select';
-	import { Plus } from '@lucide/svelte';
+	import { Pencil, Plus, Trash2 } from '@lucide/svelte';
+	import { cn } from '$lib/utils';
 
 	let { data, form } = $props();
 
@@ -30,6 +42,8 @@
 	// `page.form` no sirve para esto: sigue relleno tras un `fail(...)`, así que
 	// el botón se quedaría desactivado para siempre en el primer intento fallido.
 	let procesando = $state(false);
+	// Id del movimiento que se está borrando, para bloquear solo esa fila.
+	let borrando = $state<string | null>(null);
 
 	const errores = $derived(form?.errors ?? {});
 	const valores = $derived(form?.values ?? {});
@@ -150,6 +164,85 @@
 							Number(movimiento.amount)
 						)}
 					</span>
+
+					<div class="flex shrink-0 items-center gap-1">
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							class="cursor-pointer"
+							disabled
+							aria-label="Editar movimiento"
+							title="Todavía no disponible"
+						>
+							<Pencil />
+						</Button>
+
+						<AlertDialog>
+							<AlertDialogTrigger
+								class={cn(
+									buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
+									'text-muted-foreground cursor-pointer hover:text-destructive'
+								)}
+								aria-label="Eliminar movimiento"
+								disabled={borrando === movimiento.id}
+							>
+								<Trash2 />
+							</AlertDialogTrigger>
+							<AlertDialogContent size="sm">
+								<AlertDialogHeader>
+									<AlertDialogTitle>¿Eliminar este movimiento?</AlertDialogTitle>
+									<AlertDialogDescription>
+										Se borrará del historial y sus repartos entre los bolsillos se
+										desharán. No se puede deshacer.
+									</AlertDialogDescription>
+								</AlertDialogHeader>
+								<AlertDialogFooter>
+									<form
+										method="POST"
+										action="?/deleteMovement"
+										class="contents"
+										use:enhance={() => {
+											borrando = movimiento.id;
+											return async ({ result, update }) => {
+												await update();
+												borrando = null;
+												if (result.type === 'success') {
+												toast.success('Movimiento eliminado');
+												} else if (result.type === 'failure') {
+													// `result.data` viene como Record<string, unknown>, así que
+													// el mensaje hay que estrecharlo antes de dárselo al toast.
+													toast.error(
+														typeof result.data?.message === 'string'
+															? result.data.message
+															: 'No se pudo eliminar el movimiento'
+													);
+												}
+											};
+										}}
+									>
+										<input type="hidden" name="id" value={movimiento.id} />
+										<!-- bits-ui renderiza el Cancel como <button> sin type, y dentro de un
+										     form eso es type="submit": sin esto, "Cancelar" borra igual. -->
+										<AlertDialogCancel
+											type="button"
+											class="cursor-pointer"
+											disabled={borrando !== null}
+										>
+											Cancelar
+										</AlertDialogCancel>
+										<AlertDialogAction
+											type="submit"
+											variant="destructive"
+											class="cursor-pointer"
+											disabled={borrando !== null}
+										>
+											{borrando === movimiento.id ? 'Eliminando…' : 'Eliminar'}
+										</AlertDialogAction>
+									</form>
+								</AlertDialogFooter>
+							</AlertDialogContent>
+						</AlertDialog>
+					</div>
 				</li>
 			{/each}
 		</ul>

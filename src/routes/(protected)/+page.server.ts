@@ -9,7 +9,7 @@ import {
 	type BucketKind
 } from '$lib/server/db/schema';
 import { splitAmount } from '$lib/buckets';
-import { incomeSchema } from '$lib/validation/movements';
+import { incomeSchema, movementIdSchema } from '$lib/validation/movements';
 import { fieldErrors, pick, type FieldErrors } from '$lib/forms';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -145,6 +145,39 @@ export const actions: Actions = {
 				}
 			]);
 		});
+
+		return { success: true };
+	},
+
+	deleteMovement: async (event) => {
+		if (!event.locals.user) redirect(303, '/login');
+		const userId = event.locals.user.id;
+
+		// Esta acción no repinta ningún campo del formulario de ingreso, pero las
+		// dos formas de fallo comparten su estructura con addIncome: si no, el
+		// ActionData se parte en una unión y `form?.errors` deja de compilar.
+		const sinValores = { errors: {} as FieldErrors, values: {} as Record<string, string> };
+
+		const formData = await event.request.formData();
+		const parsed = movementIdSchema.safeParse(formData.get('id'));
+
+		if (!parsed.success) {
+			return fail(400, { ...sinValores, message: 'Movimiento no válido' });
+		}
+
+		// El userId va en el where y no solo como filtro posterior: sin él, cambiando
+		// el id del <input hidden> se podría borrar el movimiento de otro usuario.
+		// Los repartos por bolsillos caen en cascada (bucket_allocations.movement_id).
+		const [borrado] = await db
+			.delete(movements)
+			.where(and(eq(movements.id, parsed.data), eq(movements.userId, userId)))
+			.returning({ id: movements.id });
+
+		// 0 filas = el id no existe o no es de este usuario. No se distingue cuál
+		// de los dos casos: responder distinto revelaría ids ajenos.
+		if (!borrado) {
+			return fail(404, { ...sinValores, message: 'Ese movimiento ya no está' });
+		}
 
 		return { success: true };
 	}
