@@ -43,7 +43,13 @@
 		return `${d.getFullYear()}-${mes}-${dia}`;
 	}
 
-	const formatoMoneda = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
+	// Los importes se pintan en la moneda base del usuario, no en una fija: el
+	// enum de Divisas ya incluye USD y los movimientos llevan su propia columna.
+	// `data.user` viene del layout de (protected); el hook ya garantiza sesión,
+	// pero el tipo de `locals.user` admite null, así que se cubre.
+	const formatoMoneda = $derived(
+		new Intl.NumberFormat('es-ES', { style: 'currency', currency: data.user?.baseCurrency ?? 'CUP' })
+	);
 	const formatoFecha = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' });
 
 	// `date` llega como 'YYYY-MM-DD'. Sin la 'T00:00:00', Date lo parsea como
@@ -232,7 +238,7 @@
 						name="description"
 						type="text"
 						maxlength={200}
-						placeholder="Nómina de septiembre"
+						placeholder="Lo que cobre hoy en el trabajo"
 						aria-invalid={!!errores.description}
 						value={valores.description ?? ''}
 					/>

@@ -13,6 +13,9 @@ import {
 
 export const transactionType = pgEnum('transaction_type', ['income', 'expense']);
 export const bucketKind = pgEnum('bucket_kind', ['short_term', 'medium_term', 'long_term']);
+// USD ya está en el enum aunque la UI aún no lo use: cuando llegue, no hará
+// falta migración de datos, solo interfaz.
+export const currencyCode = pgEnum('currency_code', ['CUP', 'USD']);
 
 export const users = pgTable(
 	'users',
@@ -21,7 +24,7 @@ export const users = pgTable(
 		email: text('email').notNull(),
 		passwordHash: text('password_hash').notNull(),
 		name: text('name').notNull(),
-		baseCurrency: text('base_currency').notNull().default('EUR'),
+		baseCurrency: text('base_currency').notNull().default('CUP'),
 		// Porcentajes de reparto de cada ingreso entre los bolsillos.
 		splitShort: numeric('split_short', { precision: 5, scale: 2 }).notNull().default('60'),
 		splitMedium: numeric('split_medium', { precision: 5, scale: 2 }).notNull().default('25'),
@@ -72,6 +75,7 @@ export const movements = pgTable(
 			.references(() => users.id, { onDelete: 'cascade' }),
 		categoryId: uuid('category_id').references(() => categories.id, { onDelete: 'set null' }),
 		type: transactionType('type').notNull(),
+		currency: currencyCode('currency').notNull().default('CUP'),
 		// Siempre positivo. El signo lo determina `type`.
 		amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
 		description: text('description'),
@@ -120,6 +124,7 @@ export const bucketAllocations = pgTable(
 			.notNull()
 			.references(() => movements.id, { onDelete: 'cascade' }),
 		bucket: bucketKind('bucket').notNull(),
+		currency: currencyCode('currency').notNull().default('CUP'),
 		amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
 		createdAt: timestamp('created_at', { withTimezone: true })
 			.notNull()
@@ -177,6 +182,7 @@ export type Goal = typeof goals.$inferSelect;
 export type BucketAllocation = typeof bucketAllocations.$inferSelect;
 export type TransactionType = (typeof transactionType.enumValues)[number];
 export type BucketKind = (typeof bucketKind.enumValues)[number];
+export type CurrencyCode = (typeof currencyCode.enumValues)[number];
 
 export const TRANSACTION_TYPE_LABELS: Record<TransactionType, string> = {
 	income: 'Ingreso',
