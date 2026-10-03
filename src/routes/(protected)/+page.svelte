@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { toast } from 'svelte-sonner';
+	import MovimientoDialog, { type MovimientoEditable } from '$lib/components/movement-dialog.svelte';
 	import {
 		AlertDialog,
 		AlertDialogAction,
@@ -16,29 +17,21 @@
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { Card, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import {
-		Dialog,
-		DialogContent,
-		DialogDescription,
-		DialogFooter,
-		DialogHeader,
-		DialogTitle
-	} from '$lib/components/ui/dialog';
-	import {
 		Empty,
 		EmptyContent,
 		EmptyDescription,
 		EmptyHeader,
 		EmptyTitle
 	} from '$lib/components/ui/empty';
-	import { Field, FieldError, FieldGroup, FieldLabel } from '$lib/components/ui/field';
-	import { Input } from '$lib/components/ui/input';
-	import { NativeSelect, NativeSelectOption } from '$lib/components/ui/native-select';
 	import { Pencil, Plus, Trash2 } from '@lucide/svelte';
 	import { cn } from '$lib/utils';
 
 	let { data, form } = $props();
 
 	let abierto = $state(false);
+	// Movimiento en edición, o null si el diálogo es un alta nueva. Lo guarda el
+	// diálogo para poder vaciar solo su copia sin tener que saber qué está editando.
+	let editando = $state<MovimientoEditable | null>(null);
 	// `page.form` no sirve para esto: sigue relleno tras un `fail(...)`, así que
 	// el botón se quedaría desactivado para siempre en el primer intento fallido.
 	let procesando = $state(false);
@@ -47,15 +40,6 @@
 
 	const errores = $derived(form?.errors ?? {});
 	const valores = $derived(form?.values ?? {});
-
-	// Hoy en hora local y formato YYYY-MM-DD. toISOString() da UTC, y según la
-	// hora y la zona podría devolver el día de ayer o de mañana.
-	function hoyLocal(): string {
-		const d = new Date();
-		const mes = String(d.getMonth() + 1).padStart(2, '0');
-		const dia = String(d.getDate()).padStart(2, '0');
-		return `${d.getFullYear()}-${mes}-${dia}`;
-	}
 
 	// Los importes se pintan en la moneda base del usuario, no en una fija: el
 	// enum de Divisas ya incluye USD y los movimientos llevan su propia columna.
@@ -71,6 +55,16 @@
 	function fechaLegible(iso: string): string {
 		return formatoFecha.format(new Date(`${iso}T00:00:00`));
 	}
+
+	function abrirNuevo(): void {
+		editando = null;
+		abierto = true;
+	}
+
+	function abrirEdicion(movimiento: MovimientoEditable): void {
+		editando = movimiento;
+		abierto = true;
+	}
 </script>
 
 <svelte:head>
@@ -82,7 +76,7 @@
 		<p class="text-sm text-muted-foreground">Panel</p>
 		<h1 class="text-3xl font-semibold tracking-tight">Resumen</h1>
 	</div>
-	<Button class="cursor-pointer" onclick={() => (abierto = true)}>
+	<Button class="cursor-pointer" onclick={abrirNuevo}>
 		<Plus />
 		Añadir ingreso
 	</Button>
@@ -127,7 +121,7 @@
 				</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent>
-				<Button variant="outline" onclick={() => (abierto = true)}>
+				<Button variant="outline" onclick={abrirNuevo}>
 					<Plus />
 					Añadir tu primer ingreso
 				</Button>
@@ -170,9 +164,8 @@
 							variant="ghost"
 							size="icon-sm"
 							class="cursor-pointer"
-							disabled
+							onclick={() => abrirEdicion(movimiento)}
 							aria-label="Editar movimiento"
-							title="Todavía no disponible"
 						>
 							<Pencil />
 						</Button>
@@ -248,104 +241,10 @@
 		</ul>
 	</section>
 {/if}
-
-<Dialog bind:open={abierto}>
-	<DialogContent>
-		<DialogHeader>
-			<DialogTitle>Añadir ingreso</DialogTitle>
-			<DialogDescription>Registra un ingreso para empezar a mover tus cifras.</DialogDescription>
-		</DialogHeader>
-
-		<form
-			method="POST"
-			action="?/addIncome"
-			use:enhance={() => {
-				procesando = true;
-				return async ({ result, update }) => {
-					await update();
-					procesando = false;
-					if (result.type === 'success') {
-						abierto = false;
-						toast.success('Ingreso guardado');
-					}
-				};
-			}}
-		>
-			<FieldGroup>
-				<Field data-invalid={!!errores.amount}>
-					<FieldLabel for="amount">Monto</FieldLabel>
-					<Input
-						id="amount"
-						name="amount"
-						type="number"
-						inputmode="decimal"
-						step="0.01"
-						min="0"
-						placeholder="0.00"
-						required
-						aria-invalid={!!errores.amount}
-						value={valores.amount ?? ''}
-					/>
-					{#if errores.amount}
-						<FieldError>{errores.amount[0]}</FieldError>
-					{/if}
-				</Field>
-
-				<Field data-invalid={!!errores.categoryId}>
-					<FieldLabel for="categoryId">Categoría</FieldLabel>
-					<NativeSelect
-						id="categoryId"
-						name="categoryId"
-						class="w-full"
-						aria-invalid={!!errores.categoryId}
-					>
-						<NativeSelectOption value="">Sin categoría</NativeSelectOption>
-						{#each data.incomeCategories as categoria (categoria.id)}
-							<NativeSelectOption value={categoria.id}>{categoria.name}</NativeSelectOption>
-						{/each}
-					</NativeSelect>
-					{#if errores.categoryId}
-						<FieldError>{errores.categoryId[0]}</FieldError>
-					{/if}
-				</Field>
-
-				<Field data-invalid={!!errores.date}>
-					<FieldLabel for="date">Fecha</FieldLabel>
-					<Input
-						id="date"
-						name="date"
-						type="date"
-						required
-						aria-invalid={!!errores.date}
-						value={valores.date ?? hoyLocal()}
-					/>
-					{#if errores.date}
-						<FieldError>{errores.date[0]}</FieldError>
-					{/if}
-				</Field>
-
-				<Field data-invalid={!!errores.description}>
-					<FieldLabel for="description">Descripción <span class="text-muted-foreground">(opcional)</span></FieldLabel>
-					<Input
-						id="description"
-						name="description"
-						type="text"
-						maxlength={200}
-						placeholder="Lo que cobre hoy en el trabajo"
-						aria-invalid={!!errores.description}
-						value={valores.description ?? ''}
-					/>
-					{#if errores.description}
-						<FieldError>{errores.description[0]}</FieldError>
-					{/if}
-				</Field>
-			</FieldGroup>
-
-			<DialogFooter class="mt-6">
-				<Button type="submit" disabled={procesando}>
-					{procesando ? 'Guardando…' : 'Guardar ingreso'}
-				</Button>
-			</DialogFooter>
-		</form>
-	</DialogContent>
-</Dialog>
+<MovimientoDialog
+	bind:abierto
+	bind:movimiento={editando}
+	categorias={data.categories}
+	errores={errores}
+	valores={valores}
+/>

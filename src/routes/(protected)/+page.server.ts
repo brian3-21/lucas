@@ -9,20 +9,40 @@ import {
 	type BucketKind
 } from '$lib/server/db/schema';
 import { splitAmount } from '$lib/buckets';
-import { incomeSchema, movementIdSchema } from '$lib/validation/movements';
+import {
+	incomeSchema,
+	movementIdSchema,
+	movementUpdateSchema
+} from '$lib/validation/movements';
 import { fieldErrors, pick, type FieldErrors } from '$lib/forms';
 import type { Actions, PageServerLoad } from './$types';
+
+// Las tres filas que van a bucket_allocations para un ingreso. Alta y edición las
+// necesitan igual y, escritas por separado, acabarían divergiendo.
+function filasReparto(userId: string, movementId: string, amount: number, pcts: {
+	short: number;
+	medium: number;
+}) {
+	const reparto = splitAmount(amount, pcts);
+	return [
+		{ userId, movementId, bucket: 'short_term' as const, amount: reparto.short_term.toFixed(2) },
+		{ userId, movementId, bucket: 'medium_term' as const, amount: reparto.medium_term.toFixed(2) },
+		{ userId, movementId, bucket: 'long_term' as const, amount: reparto.long_term.toFixed(2) }
+	];
+}
 
 export const load: PageServerLoad = async ({ locals }) => {
 	// El hook ya redirige a /login si no hay sesión; esto solo satisface a TS.
 	if (!locals.user) redirect(303, '/login');
 	const userId = locals.user.id;
 
-	const [incomeCategories, recentMovements, sumasPorBolsillo] = await Promise.all([
+	const [categoriasUsuario, recentMovements, sumasPorBolsillo] = await Promise.all([
+		// Las de los dos tipos, no solo las de ingreso: al editar un gasto hay que
+		// ofrecer las suyas. El diálogo filtra por el tipo del movimiento.
 		db
 			.select()
 			.from(categories)
-			.where(and(eq(categories.userId, userId), eq(categories.kind, 'income')))
+			.where(eq(categories.userId, userId))
 			.orderBy(categories.name),
 		db.query.movements.findMany({
 			where: eq(movements.userId, userId),
@@ -49,7 +69,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 		bucketTotals[fila.bucket] = fila.total;
 	}
 
-	return { incomeCategories, recentMovements, bucketTotals };
+	// La clave del return no puede llamarse `categories`: la importaría la tabla de
+	// Drizzle y se colaría en `data` en vez de las filas del usuario.
+	return { categories: categoriasUsuario, recentMovements, bucketTotals };
 };
 
 export const actions: Actions = {
@@ -104,10 +126,10 @@ export const actions: Actions = {
 			.limit(1);
 
 		// numeric llega como string; fallback a los defaults por robustez.
-		const reparto = splitAmount(amount, {
+		const pcts = {
 			short: Number(usuario?.splitShort ?? 60),
 			medium: Number(usuario?.splitMedium ?? 30)
-		});
+		};
 
 		// El movimiento y sus tres repartos se guardan juntos o no se guarda nada.
 		await db.transaction(async (tx) => {
@@ -124,26 +146,94 @@ export const actions: Actions = {
 				})
 				.returning({ id: movements.id });
 
-			await tx.insert(bucketAllocations).values([
-				{
-					userId,
-					movementId: movimiento.id,
-					bucket: 'short_term',
-					amount: reparto.short_term.toFixed(2)
-				},
-				{
-					userId,
-					movementId: movimiento.id,
-					bucket: 'medium_term',
-					amount: reparto.medium_term.toFixed(2)
-				},
-				{
-					userId,
-					movementId: movimiento.id,
-					bucket: 'long_term',
-					amount: reparto.long_term.toFixed(2)
-				}
-			]);
+			await tx.insert(bucketAllocations).values(filasReparto(userId, movimiento.id, amount, pcts));
+		});
+
+		return { success: true };
+	},
+
+	updateMovement: async (event) => {
+		if (!event.locals.user) redirect(303, '/login');
+		const userId = event.locals.user.id;
+
+		const formData = await event.request.formData();
+		const values = pick(formData, ['id', 'amount', 'date', 'description', 'categoryId']);
+
+		const parsed = movementUpdateSchema.safeParse({
+			...values,
+			description: values.description || undefined,
+			categoryId: values.categoryId || undefined
+		});
+
+		if (!parsed.success) {
+			return fail(400, { errors: fieldErrors(parsed.error), values });
+		}
+
+		const { id, amount, date, description, categoryId } = parsed.data;
+
+		// El movimiento se lee antes de tocar nada: de aquí salen el tipo (para validar
+		// la categoría) y el monto anterior (para saber si hay que rehacer el reparto).
+		const [actual] = await db
+			.select({ type: movements.type, amount: movements.amount })
+			.from(movements)
+			.where(and(eq(movements.id, id), eq(movements.userId, userId)))
+			.limit(1);
+
+		if (!actual) {
+			return fail(404, { errors: {}, values, message: 'Ese movimiento ya no está' });
+		}
+
+		// Misma comprobación que al dar de alta, pero además la categoría tiene que
+		// ser del mismo tipo que el movimiento: un gasto no se etiqueta como ingreso.
+		if (categoryId) {
+			const [owned] = await db
+				.select({ id: categories.id })
+				.from(categories)
+				.where(
+					and(
+						eq(categories.id, categoryId),
+						eq(categories.userId, userId),
+						eq(categories.kind, actual.type)
+					)
+				)
+				.limit(1);
+
+			if (!owned) {
+				const categoriaInvalida: FieldErrors = { categoryId: ['Categoría no válida'] };
+				return fail(400, { errors: categoriaInvalida, values });
+			}
+		}
+
+		// Solo se rehace el reparto si el monto cambió: corregir una descripción no
+		// debe tocar las tarjetas de los bolsillos.
+		const cambiaMonto = actual.amount !== amount.toFixed(2);
+
+		let pcts = { short: 60, medium: 30 };
+		if (cambiaMonto && actual.type === 'income') {
+			const [usuario] = await db
+				.select({ splitShort: users.splitShort, splitMedium: users.splitMedium })
+				.from(users)
+				.where(eq(users.id, userId))
+				.limit(1);
+
+			pcts = {
+				short: Number(usuario?.splitShort ?? 60),
+				medium: Number(usuario?.splitMedium ?? 30)
+			};
+		}
+
+		// El movimiento y su reparto se escriben juntos: un ingreso con el monto
+		// viejo en las tarjetas y el nuevo en el historial sería peor que no guardar.
+		await db.transaction(async (tx) => {
+			await tx
+				.update(movements)
+				.set({ amount: amount.toFixed(2), date, description: description ?? null, categoryId: categoryId ?? null })
+				.where(and(eq(movements.id, id), eq(movements.userId, userId)));
+
+			if (cambiaMonto && actual.type === 'income') {
+				await tx.delete(bucketAllocations).where(eq(bucketAllocations.movementId, id));
+				await tx.insert(bucketAllocations).values(filasReparto(userId, id, amount, pcts));
+			}
 		});
 
 		return { success: true };
