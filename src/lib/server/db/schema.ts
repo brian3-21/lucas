@@ -121,8 +121,40 @@ export const goals = pgTable(
 	(t) => [index('goals_user_id_idx').on(t.userId)]
 );
 
-// Libro mayor de repartos: cada ingreso genera una fila por bolsillo.
-// Los totales de las tarjetas son SUM(amount) GROUP BY bucket.
+// Mover dinero de un bolsillo a otro. No es un ingreso ni un gasto: el dinero
+// solo cambia de sitio, así que vive en su propia tabla en vez de colgarse de
+// `movements`. El CHECK de origen != destino y el saldo (que comprueba la
+// acción, no la BD) hacen que nunca se pueda crear un traslado sin destino.
+export const bucketTransfers = pgTable(
+	'bucket_transfers',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		// `from` es palabra reservada en Postgres, de ahí el sufijo en la columna.
+		from: bucketKind('from_bucket').notNull(),
+		to: bucketKind('to_bucket').notNull(),
+		currency: currencyCode('currency').notNull().default('CUP'),
+		amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
+		description: text('description'),
+		date: date('date').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true })
+			.notNull()
+			.defaultNow()
+	},
+	(t) => [
+		index('bucket_transfers_user_id_idx').on(t.userId),
+		index('bucket_transfers_date_idx').on(t.date),
+		check('bucket_transfers_distinct_buckets', sql`${t.from} <> ${t.to}`),
+		check('bucket_transfers_amount_positive', sql`${t.amount} > 0`)
+	]
+);
+
+// Libro mayor de repartos: cada ingreso genera una fila por bolsillo con el
+// signo + y cada transferencia genera dos, una − y otra +, de forma que el
+// saldo de cada tarjeta es SUM(amount) GROUP BY bucket. El dinero nunca queda
+// "en el aire": las dos filas de un traslado siempre suman cero.
 export const bucketAllocations = pgTable(
 	'bucket_allocations',
 	{
@@ -130,11 +162,15 @@ export const bucketAllocations = pgTable(
 		userId: uuid('user_id')
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade' }),
-		movementId: uuid('movement_id')
-			.notNull()
-			.references(() => movements.id, { onDelete: 'cascade' }),
+		// Exactamente uno de los dos: una fila viene de un ingreso o de una
+		// transferencia, nunca de ambos y nunca de ninguno.
+		movementId: uuid('movement_id').references(() => movements.id, { onDelete: 'cascade' }),
+		transferId: uuid('transfer_id').references(() => bucketTransfers.id, {
+			onDelete: 'cascade'
+		}),
 		bucket: bucketKind('bucket').notNull(),
 		currency: currencyCode('currency').notNull().default('CUP'),
+		// Con signo: negativo solo en la salida de una transferencia.
 		amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
 		createdAt: timestamp('created_at', { withTimezone: true })
 			.notNull()
@@ -142,7 +178,18 @@ export const bucketAllocations = pgTable(
 	},
 	(t) => [
 		index('bucket_allocations_user_id_idx').on(t.userId),
-		index('bucket_allocations_movement_id_idx').on(t.movementId)
+		index('bucket_allocations_movement_id_idx').on(t.movementId),
+		index('bucket_allocations_transfer_id_idx').on(t.transferId),
+		// Una fila por bolsillo y traslado: impide que un traslado registre dos
+		// salidas y con ello alguien se invente dinero. Las filas de ingreso no se
+		// ven afectadas: en Postgres los NULL no chocan en un índice único.
+		uniqueIndex('bucket_allocations_transfer_bucket_idx').on(t.transferId, t.bucket),
+		check('bucket_allocations_single_origin', sql`num_nonnulls(${t.movementId}, ${t.transferId}) = 1`),
+		// El signo negativo solo tiene sentido en las dos filas de un traslado.
+		check(
+			'bucket_allocations_income_amount_positive',
+			sql`${t.transferId} IS NOT NULL OR ${t.amount} > 0`
+		)
 	]
 );
 
@@ -151,7 +198,8 @@ export const usersRelations = relations(users, ({ many }) => ({
 	categories: many(categories),
 	movements: many(movements),
 	goals: many(goals),
-	bucketAllocations: many(bucketAllocations)
+	bucketAllocations: many(bucketAllocations),
+	bucketTransfers: many(bucketTransfers)
 }));
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
@@ -178,10 +226,21 @@ export const goalsRelations = relations(goals, ({ one }) => ({
 
 export const bucketAllocationsRelations = relations(bucketAllocations, ({ one }) => ({
 	user: one(users, { fields: [bucketAllocations.userId], references: [users.id] }),
+	// movementId y transferId son nullables (solo se rellena uno de los dos), así
+	// que Drizzle ya marca estas dos relaciones como anulables por su cuenta.
 	movement: one(movements, {
 		fields: [bucketAllocations.movementId],
 		references: [movements.id]
+	}),
+	transfer: one(bucketTransfers, {
+		fields: [bucketAllocations.transferId],
+		references: [bucketTransfers.id]
 	})
+}));
+
+export const bucketTransfersRelations = relations(bucketTransfers, ({ one, many }) => ({
+	user: one(users, { fields: [bucketTransfers.userId], references: [users.id] }),
+	bucketAllocations: many(bucketAllocations)
 }));
 
 export type User = typeof users.$inferSelect;
@@ -190,6 +249,7 @@ export type Category = typeof categories.$inferSelect;
 export type Movement = typeof movements.$inferSelect;
 export type Goal = typeof goals.$inferSelect;
 export type BucketAllocation = typeof bucketAllocations.$inferSelect;
+export type BucketTransfer = typeof bucketTransfers.$inferSelect;
 export type TransactionType = (typeof transactionType.enumValues)[number];
 export type BucketKind = (typeof bucketKind.enumValues)[number];
 export type CurrencyCode = (typeof currencyCode.enumValues)[number];
@@ -199,11 +259,8 @@ export const TRANSACTION_TYPE_LABELS: Record<TransactionType, string> = {
 	expense: 'Gasto'
 };
 
-export const BUCKET_KIND_LABELS: Record<BucketKind, string> = {
-	short_term: 'Corto plazo',
-	medium_term: 'Mediano plazo',
-	long_term: 'Largo plazo'
-};
+// Las etiquetas de los bolsillos están en $lib/bucket-meta: el cliente no puede
+// importar este módulo.
 
 export const DEFAULT_CATEGORIES: { name: string; kind: TransactionType; color: string }[] = [
 	{ name: 'Salario', kind: 'income', color: '#22c55e' },

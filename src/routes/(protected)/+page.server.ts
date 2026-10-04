@@ -3,19 +3,31 @@ import { and, desc, eq, sum } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
 	bucketAllocations,
+	bucketTransfers,
 	categories,
 	movements,
 	users,
 	type BucketKind
 } from '$lib/server/db/schema';
 import { splitAmount } from '$lib/buckets';
+import { BUCKET_LABELS } from '$lib/bucket-meta';
 import {
 	incomeSchema,
 	movementIdSchema,
 	movementUpdateSchema
 } from '$lib/validation/movements';
+import { transferSchema } from '$lib/validation/transfers';
 import { fieldErrors, pick, type FieldErrors } from '$lib/forms';
 import type { Actions, PageServerLoad } from './$types';
+
+// Marca para abortar la transacción cuando el bolsillo de origen no tiene saldo.
+// Va en el mensaje de la excepción porque es lo único que llega intacto al catch:
+// cualquier otra cosa se propaga como error de verdad.
+const SIN_SALDO = 'SIN_SALDO';
+
+function round2(n: number): number {
+	return Math.round(n * 100) / 100;
+}
 
 // Las tres filas que van a bucket_allocations para un ingreso. Alta y edición las
 // necesitan igual y, escritas por separado, acabarían divergiendo.
@@ -36,7 +48,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	if (!locals.user) redirect(303, '/login');
 	const userId = locals.user.id;
 
-	const [categoriasUsuario, recentMovements, sumasPorBolsillo] = await Promise.all([
+	const [categoriasUsuario, recentMovements, sumasPorBolsillo, recentTransfers] = await Promise.all([
 		// Las de los dos tipos, no solo las de ingreso: al editar un gasto hay que
 		// ofrecer las suyas. El diálogo filtra por el tipo del movimiento.
 		db
@@ -50,6 +62,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 			orderBy: [desc(movements.date), desc(movements.createdAt)],
 			limit: 10
 		}),
+		// Suma con signo: los ingresos suman y las salidas de una transferencia
+		// restan, así que el saldo de cada tarjeta sale de aquí sin más contabilidad.
 		db
 			.select({
 				bucket: bucketAllocations.bucket,
@@ -57,7 +71,15 @@ export const load: PageServerLoad = async ({ locals }) => {
 			})
 			.from(bucketAllocations)
 			.where(eq(bucketAllocations.userId, userId))
-			.groupBy(bucketAllocations.bucket)
+			.groupBy(bucketAllocations.bucket),
+		// Los traslados no son movimientos, pero forman parte del mismo historial:
+		// sin ellos no se ve por dónde pasó el dinero.
+		db
+			.select()
+			.from(bucketTransfers)
+			.where(eq(bucketTransfers.userId, userId))
+			.orderBy(desc(bucketTransfers.date), desc(bucketTransfers.createdAt))
+			.limit(10)
 	]);
 
 	const bucketTotals: Record<BucketKind, number> = {
@@ -71,7 +93,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 	// La clave del return no puede llamarse `categories`: la importaría la tabla de
 	// Drizzle y se colaría en `data` en vez de las filas del usuario.
-	return { categories: categoriasUsuario, recentMovements, bucketTotals };
+	return { categories: categoriasUsuario, recentMovements, recentTransfers, bucketTotals };
 };
 
 export const actions: Actions = {
@@ -267,6 +289,91 @@ export const actions: Actions = {
 		// de los dos casos: responder distinto revelaría ids ajenos.
 		if (!borrado) {
 			return fail(404, { ...sinValores, message: 'Ese movimiento ya no está' });
+		}
+
+		return { success: true };
+	},
+
+	// Mueve dinero de un bolsillo a otro. El total entre los tres no cambia: solo
+	// se escriben las dos filas del traslado (una − y otra +) y, como van en la
+	// misma transacción, el dinero nunca se queda a medio camino.
+	transferBuckets: async (event) => {
+		if (!event.locals.user) redirect(303, '/login');
+		const userId = event.locals.user.id;
+
+		const formData = await event.request.formData();
+		const values = pick(formData, ['from', 'to', 'amount', 'date', 'description']);
+
+		const parsed = transferSchema.safeParse({
+			...values,
+			description: values.description || undefined
+		});
+
+		if (!parsed.success) {
+			return fail(400, { errors: fieldErrors(parsed.error), values });
+		}
+
+		const { from, to, amount, date, description } = parsed.data;
+
+		// El saldo del bolsillo no lo puede imponer ningún CHECK: depende de todas
+		// las filas anteriores. Sale del propio libro mayor dentro de la
+		// transacción, y con la fila del usuario bloqueada para que dos traslados
+		// simultáneos no puedan leer el mismo saldo y vaciar un bolsillo.
+		try {
+			await db.transaction(async (tx) => {
+				await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for('update');
+
+				const [saldo] = await tx
+					.select({ total: sum(bucketAllocations.amount).mapWith(Number) })
+					.from(bucketAllocations)
+					.where(
+						and(eq(bucketAllocations.userId, userId), eq(bucketAllocations.bucket, from))
+					);
+
+				// round2 en los dos lados: sin él, un saldo como 1000.005 podría
+				// rechazar un retiro de 1000.00 por un decimal de más o de menos.
+				if (round2(amount) > round2(saldo?.total ?? 0)) {
+					throw new Error(SIN_SALDO);
+				}
+
+				const [traslado] = await tx
+					.insert(bucketTransfers)
+					.values({
+						userId,
+						from,
+						to,
+						amount: amount.toFixed(2),
+						date,
+						description: description ?? null
+					})
+					.returning({ id: bucketTransfers.id });
+
+				await tx.insert(bucketAllocations).values([
+					{
+						userId,
+						transferId: traslado.id,
+						bucket: from,
+						amount: round2(-amount).toFixed(2)
+					},
+					{
+						userId,
+						transferId: traslado.id,
+						bucket: to,
+						amount: amount.toFixed(2)
+					}
+				]);
+			});
+		} catch (error) {
+			// La comprobación del saldo vive dentro de la transacción y la única
+			// forma de abortarla es lanzar. Solo esta marca se traduce a un
+			// mensaje; cualquier otro error se propaga.
+			if (error instanceof Error && error.message === SIN_SALDO) {
+				const sinSaldo: FieldErrors = {
+					amount: [`No hay saldo suficiente en ${BUCKET_LABELS[from]}`]
+				};
+				return fail(400, { errors: sinSaldo, values });
+			}
+			throw error;
 		}
 
 		return { success: true };

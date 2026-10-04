@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { toast } from 'svelte-sonner';
 	import MovimientoDialog, { type MovimientoEditable } from '$lib/components/movement-dialog.svelte';
+	import TransferDialog from '$lib/components/transfer-dialog.svelte';
 	import {
 		AlertDialog,
 		AlertDialogAction,
@@ -15,7 +16,13 @@
 	} from '$lib/components/ui/alert-dialog';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
-	import { Card, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
+	import {
+		Card,
+		CardAction,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card';
 	import {
 		Empty,
 		EmptyContent,
@@ -23,7 +30,8 @@
 		EmptyHeader,
 		EmptyTitle
 	} from '$lib/components/ui/empty';
-	import { Pencil, Plus, Trash2 } from '@lucide/svelte';
+	import { ArrowRight, ArrowRightLeft, Pencil, Plus, Trash2 } from '@lucide/svelte';
+	import { BUCKET_LABELS, BUCKET_ORDER, type BucketKind } from '$lib/bucket-meta';
 	import { cn } from '$lib/utils';
 
 	let { data, form } = $props();
@@ -32,6 +40,10 @@
 	// Movimiento en edición, o null si el diálogo es un alta nueva. Lo guarda el
 	// diálogo para poder vaciar solo su copia sin tener que saber qué está editando.
 	let editando = $state<MovimientoEditable | null>(null);
+	// Bolsillo desde el que sale el dinero. Lo fija la tarjeta en la que se pulsa
+	// "Mover": el diálogo no deja elegir otro origen.
+	let origenTransferencia = $state<BucketKind>('short_term');
+	let transferenciaAbierta = $state(false);
 	// `page.form` no sirve para esto: sigue relleno tras un `fail(...)`, así que
 	// el botón se quedaría desactivado para siempre en el primer intento fallido.
 	let procesando = $state(false);
@@ -56,6 +68,26 @@
 		return formatoFecha.format(new Date(`${iso}T00:00:00`));
 	}
 
+	// Ingresos y traslados se pintan en la misma lista y en el mismo orden: son
+	// dos maneras de mover el mismo dinero, aunque los segundos no cambien el total.
+	// La clave ordena por fecha y, a igualdad de fecha, por hora de creación.
+	const historial = $derived(
+		[
+			...data.recentMovements.map((movimiento) => ({
+				tipo: 'movimiento' as const,
+				clave: `movimiento-${movimiento.id}`,
+				orden: `${movimiento.date} ${movimiento.createdAt.toISOString()}`,
+				movimiento
+			})),
+			...data.recentTransfers.map((traslado) => ({
+				tipo: 'traslado' as const,
+				clave: `traslado-${traslado.id}`,
+				orden: `${traslado.date} ${traslado.createdAt.toISOString()}`,
+				traslado
+			}))
+		].sort((a, b) => b.orden.localeCompare(a.orden))
+	);
+
 	function abrirNuevo(): void {
 		editando = null;
 		abierto = true;
@@ -64,6 +96,11 @@
 	function abrirEdicion(movimiento: MovimientoEditable): void {
 		editando = movimiento;
 		abierto = true;
+	}
+
+	function abrirTransferencia(origen: BucketKind): void {
+		origenTransferencia = origen;
+		transferenciaAbierta = true;
 	}
 </script>
 
@@ -83,35 +120,31 @@
 </header>
 
 <div class="grid gap-4 sm:grid-cols-3">
-	<Card>
-		<CardHeader>
-			<CardDescription>Corto plazo</CardDescription>
-			<CardTitle class="tabular text-3xl">
-				{formatoMoneda.format(data.bucketTotals.short_term)}
-			</CardTitle>
-		</CardHeader>
-	</Card>
-
-	<Card>
-		<CardHeader>
-			<CardDescription>Mediano plazo</CardDescription>
-			<CardTitle class="tabular text-3xl">
-				{formatoMoneda.format(data.bucketTotals.medium_term)}
-			</CardTitle>
-		</CardHeader>
-	</Card>
-
-	<Card>
-		<CardHeader>
-			<CardDescription>Largo plazo</CardDescription>
-			<CardTitle class="tabular text-3xl">
-				{formatoMoneda.format(data.bucketTotals.long_term)}
-			</CardTitle>
-		</CardHeader>
-	</Card>
+	{#each BUCKET_ORDER as bolsillo (bolsillo)}
+		<Card>
+			<CardHeader>
+				<CardAction>
+					<Button
+						variant="ghost"
+						size="sm"
+						class="cursor-pointer"
+						onclick={() => abrirTransferencia(bolsillo)}
+						aria-label={`Mover dinero desde ${BUCKET_LABELS[bolsillo]}`}
+					>
+						<ArrowRightLeft />
+						Mover
+					</Button>
+				</CardAction>
+				<CardDescription>{BUCKET_LABELS[bolsillo]}</CardDescription>
+				<CardTitle class="tabular text-3xl">
+					{formatoMoneda.format(data.bucketTotals[bolsillo])}
+				</CardTitle>
+			</CardHeader>
+		</Card>
+	{/each}
 </div>
 
-{#if data.recentMovements.length === 0}
+{#if historial.length === 0}
 	<div class="mt-6">
 		<Empty class="border border-dashed">
 			<EmptyHeader>
@@ -132,111 +165,140 @@
 	<section class="mt-6">
 		<h2 class="mb-3 text-lg font-semibold tracking-tight">Últimos movimientos</h2>
 		<ul class="divide-y rounded-lg border">
-			{#each data.recentMovements as movimiento (movimiento.id)}
-				<li class="flex items-center gap-3 px-4 py-3">
-					<span
-						class="size-2.5 shrink-0 rounded-full"
-						style:background-color={movimiento.category?.color ?? 'var(--muted-foreground)'}
-					></span>
-					<div class="min-w-0 flex-1">
-						<p class="truncate text-sm font-medium">
-							{movimiento.description || movimiento.category?.name || 'Ingreso'}
-						</p>
-						<p class="text-xs text-muted-foreground">{fechaLegible(movimiento.date)}</p>
-					</div>
-					{#if movimiento.category}
-						<Badge variant="secondary" class="hidden sm:inline-flex">
-							{movimiento.category.name}
-						</Badge>
-					{/if}
-					<span
-						class="tabular shrink-0 text-sm font-semibold {movimiento.type === 'income'
-							? 'text-green-600 dark:text-green-500'
-							: 'text-red-600 dark:text-red-500'}"
-					>
-						{movimiento.type === 'income' ? '+' : '−'}{formatoMoneda.format(
-							Number(movimiento.amount)
-						)}
-					</span>
-
-					<div class="flex shrink-0 items-center gap-1">
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							class="cursor-pointer"
-							onclick={() => abrirEdicion(movimiento)}
-							aria-label="Editar movimiento"
+			{#each historial as linea (linea.clave)}
+				{#if linea.tipo === 'movimiento'}
+					{@const movimiento = linea.movimiento}
+					<li class="flex items-center gap-3 px-4 py-3">
+						<span
+							class="size-2.5 shrink-0 rounded-full"
+							style:background-color={movimiento.category?.color ?? 'var(--muted-foreground)'}
+						></span>
+						<div class="min-w-0 flex-1">
+							<p class="truncate text-sm font-medium">
+								{movimiento.description || movimiento.category?.name || 'Ingreso'}
+							</p>
+							<p class="text-xs text-muted-foreground">{fechaLegible(movimiento.date)}</p>
+						</div>
+						{#if movimiento.category}
+							<Badge variant="secondary" class="hidden sm:inline-flex">
+								{movimiento.category.name}
+							</Badge>
+						{/if}
+						<span
+							class="tabular shrink-0 text-sm font-semibold {movimiento.type === 'income'
+								? 'text-green-600 dark:text-green-500'
+								: 'text-red-600 dark:text-red-500'}"
 						>
-							<Pencil />
-						</Button>
+							{movimiento.type === 'income' ? '+' : '−'}{formatoMoneda.format(
+								Number(movimiento.amount)
+							)}
+						</span>
 
-						<AlertDialog>
-							<AlertDialogTrigger
-								class={cn(
-									buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
-									'text-muted-foreground cursor-pointer hover:text-destructive'
-								)}
-								aria-label="Eliminar movimiento"
-								disabled={borrando === movimiento.id}
+						<div class="flex shrink-0 items-center gap-1">
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								class="cursor-pointer"
+								onclick={() => abrirEdicion(movimiento)}
+								aria-label="Editar movimiento"
 							>
-								<Trash2 />
-							</AlertDialogTrigger>
-							<AlertDialogContent size="sm">
-								<AlertDialogHeader>
-									<AlertDialogTitle>¿Eliminar este movimiento?</AlertDialogTitle>
-									<AlertDialogDescription>
-										Se borrará del historial y sus repartos entre los bolsillos se
-										desharán. No se puede deshacer.
-									</AlertDialogDescription>
-								</AlertDialogHeader>
-								<AlertDialogFooter>
-									<form
-										method="POST"
-										action="?/deleteMovement"
-										class="contents"
-										use:enhance={() => {
-											borrando = movimiento.id;
-											return async ({ result, update }) => {
-												await update();
-												borrando = null;
-												if (result.type === 'success') {
-												toast.success('Movimiento eliminado');
-												} else if (result.type === 'failure') {
-													// `result.data` viene como Record<string, unknown>, así que
-													// el mensaje hay que estrecharlo antes de dárselo al toast.
-													toast.error(
-														typeof result.data?.message === 'string'
-															? result.data.message
-															: 'No se pudo eliminar el movimiento'
-													);
-												}
-											};
-										}}
-									>
-										<input type="hidden" name="id" value={movimiento.id} />
-										<!-- bits-ui renderiza el Cancel como <button> sin type, y dentro de un
-										     form eso es type="submit": sin esto, "Cancelar" borra igual. -->
-										<AlertDialogCancel
-											type="button"
-											class="cursor-pointer"
-											disabled={borrando !== null}
+								<Pencil />
+							</Button>
+
+							<AlertDialog>
+								<AlertDialogTrigger
+									class={cn(
+										buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
+										'text-muted-foreground cursor-pointer hover:text-destructive'
+									)}
+									aria-label="Eliminar movimiento"
+									disabled={borrando === movimiento.id}
+								>
+									<Trash2 />
+								</AlertDialogTrigger>
+								<AlertDialogContent size="sm">
+									<AlertDialogHeader>
+										<AlertDialogTitle>¿Eliminar este movimiento?</AlertDialogTitle>
+										<AlertDialogDescription>
+											Se borrará del historial y sus repartos entre los bolsillos se
+											desharán. No se puede deshacer.
+										</AlertDialogDescription>
+									</AlertDialogHeader>
+									<AlertDialogFooter>
+										<form
+											method="POST"
+											action="?/deleteMovement"
+											class="contents"
+											use:enhance={() => {
+												borrando = movimiento.id;
+												return async ({ result, update }) => {
+													await update();
+													borrando = null;
+													if (result.type === 'success') {
+														toast.success('Movimiento eliminado');
+													} else if (result.type === 'failure') {
+														// `result.data` viene como Record<string, unknown>, así que
+														// el mensaje hay que estrecharlo antes de dárselo al toast.
+														toast.error(
+															typeof result.data?.message === 'string'
+																? result.data.message
+																: 'No se pudo eliminar el movimiento'
+														);
+													}
+												};
+											}}
 										>
-											Cancelar
-										</AlertDialogCancel>
-										<AlertDialogAction
-											type="submit"
-											variant="destructive"
-											class="cursor-pointer"
-											disabled={borrando !== null}
-										>
-											{borrando === movimiento.id ? 'Eliminando…' : 'Eliminar'}
-										</AlertDialogAction>
-									</form>
-								</AlertDialogFooter>
-							</AlertDialogContent>
-						</AlertDialog>
-					</div>
-				</li>
+											<input type="hidden" name="id" value={movimiento.id} />
+											<!-- bits-ui renderiza el Cancel como <button> sin type, y dentro de un
+											     form eso es type="submit": sin esto, "Cancelar" borra igual. -->
+											<AlertDialogCancel
+												type="button"
+												class="cursor-pointer"
+												disabled={borrando !== null}
+											>
+												Cancelar
+											</AlertDialogCancel>
+											<AlertDialogAction
+												type="submit"
+												variant="destructive"
+												class="cursor-pointer"
+												disabled={borrando !== null}
+											>
+												{borrando === movimiento.id ? 'Eliminando…' : 'Eliminar'}
+											</AlertDialogAction>
+										</form>
+									</AlertDialogFooter>
+								</AlertDialogContent>
+							</AlertDialog>
+						</div>
+					</li>
+				{:else}
+					{@const traslado = linea.traslado}
+					<li class="flex items-center gap-3 px-4 py-3">
+						<span
+							class="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
+						>
+							<ArrowRightLeft class="size-3.5" />
+						</span>
+						<div class="min-w-0 flex-1">
+							<p class="flex items-center gap-1 truncate text-sm font-medium">
+								{BUCKET_LABELS[traslado.from]}
+								<ArrowRight class="size-3.5 shrink-0 text-muted-foreground" />
+								{BUCKET_LABELS[traslado.to]}
+							</p>
+							<p class="truncate text-xs text-muted-foreground">
+								{fechaLegible(traslado.date)}{traslado.description
+									? ` · ${traslado.description}`
+									: ''}
+							</p>
+						</div>
+						<!-- Sin signo +/− como los ingresos: el dinero no entra ni sale de la
+						     cartera, solo cambia de bolsillo, y el título ya dice de cuál a cuál. -->
+						<span class="tabular shrink-0 text-sm font-semibold text-muted-foreground">
+							{formatoMoneda.format(Number(traslado.amount))}
+						</span>
+					</li>
+				{/if}
 			{/each}
 		</ul>
 	</section>
@@ -245,6 +307,14 @@
 	bind:abierto
 	bind:movimiento={editando}
 	categorias={data.categories}
+	errores={errores}
+	valores={valores}
+/>
+<TransferDialog
+	bind:abierto={transferenciaAbierta}
+	bind:origen={origenTransferencia}
+	saldos={data.bucketTotals}
+	moneda={data.user?.baseCurrency ?? 'CUP'}
 	errores={errores}
 	valores={valores}
 />
