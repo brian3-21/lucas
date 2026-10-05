@@ -3,6 +3,7 @@
 	import { toast } from 'svelte-sonner';
 	import MovimientoDialog, { type MovimientoEditable } from '$lib/components/movement-dialog.svelte';
 	import TransferDialog from '$lib/components/transfer-dialog.svelte';
+	import AdjustmentDialog from '$lib/components/adjustment-dialog.svelte';
 	import {
 		AlertDialog,
 		AlertDialogAction,
@@ -30,7 +31,14 @@
 		EmptyHeader,
 		EmptyTitle
 	} from '$lib/components/ui/empty';
-	import { ArrowRight, ArrowRightLeft, Pencil, Plus, Trash2 } from '@lucide/svelte';
+	import {
+		ArrowRight,
+		ArrowRightLeft,
+		Pencil,
+		Plus,
+		Scale,
+		Trash2
+	} from '@lucide/svelte';
 	import { BUCKET_LABELS, BUCKET_ORDER, type BucketKind } from '$lib/bucket-meta';
 	import { cn } from '$lib/utils';
 
@@ -44,6 +52,10 @@
 	// "Mover": el diálogo no deja elegir otro origen.
 	let origenTransferencia = $state<BucketKind>('short_term');
 	let transferenciaAbierta = $state(false);
+	// Bolsillo que se está ajustando y si el diálogo de ajuste está abierto. Igual
+	// que la transferencia, la tarjeta decide de qué bolsillo se quita plata.
+	let bolsilloAjuste = $state<BucketKind>('short_term');
+	let ajusteAbierto = $state(false);
 	// `page.form` no sirve para esto: sigue relleno tras un `fail(...)`, así que
 	// el botón se quedaría desactivado para siempre en el primer intento fallido.
 	let procesando = $state(false);
@@ -68,8 +80,8 @@
 		return formatoFecha.format(new Date(`${iso}T00:00:00`));
 	}
 
-	// Ingresos y traslados se pintan en la misma lista y en el mismo orden: son
-	// dos maneras de mover el mismo dinero, aunque los segundos no cambien el total.
+	// Ingresos, traslados y ajustes se pintan en la misma lista y en el mismo orden:
+	// son tres maneras de mover el mismo dinero, aunque no todas cambien el total.
 	// La clave ordena por fecha y, a igualdad de fecha, por hora de creación.
 	const historial = $derived(
 		[
@@ -84,6 +96,12 @@
 				clave: `traslado-${traslado.id}`,
 				orden: `${traslado.date} ${traslado.createdAt.toISOString()}`,
 				traslado
+			})),
+			...data.recentAdjustments.map((ajuste) => ({
+				tipo: 'ajuste' as const,
+				clave: `ajuste-${ajuste.id}`,
+				orden: `${ajuste.date} ${ajuste.createdAt.toISOString()}`,
+				ajuste
 			}))
 		].sort((a, b) => b.orden.localeCompare(a.orden))
 	);
@@ -101,6 +119,11 @@
 	function abrirTransferencia(origen: BucketKind): void {
 		origenTransferencia = origen;
 		transferenciaAbierta = true;
+	}
+
+	function abrirAjuste(bolsillo: BucketKind): void {
+		bolsilloAjuste = bolsillo;
+		ajusteAbierto = true;
 	}
 </script>
 
@@ -123,7 +146,17 @@
 	{#each BUCKET_ORDER as bolsillo (bolsillo)}
 		<Card>
 			<CardHeader>
-				<CardAction>
+				<CardAction class="flex items-center gap-1">
+					<Button
+						variant="ghost"
+						size="sm"
+						class="cursor-pointer"
+						onclick={() => abrirAjuste(bolsillo)}
+						aria-label={`Quitar plata de ${BUCKET_LABELS[bolsillo]}`}
+					>
+						<Scale />
+						Ajustar
+					</Button>
 					<Button
 						variant="ghost"
 						size="sm"
@@ -272,7 +305,7 @@
 							</AlertDialog>
 						</div>
 					</li>
-				{:else}
+				{:else if linea.tipo === 'traslado'}
 					{@const traslado = linea.traslado}
 					<li class="flex items-center gap-3 px-4 py-3">
 						<span
@@ -298,6 +331,36 @@
 							{formatoMoneda.format(Number(traslado.amount))}
 						</span>
 					</li>
+				{:else}
+					{@const ajuste = linea.ajuste}
+					{@const deltaAjuste = Number(ajuste.amount)}
+					<li class="flex items-center gap-3 px-4 py-3">
+						<span
+							class="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
+						>
+							<Scale class="size-3.5" />
+						</span>
+						<div class="min-w-0 flex-1">
+							<p class="truncate text-sm font-medium">
+								{deltaAjuste < 0 ? 'Restaste' : 'Sumaste'}
+								{formatoMoneda.format(Math.abs(deltaAjuste))}
+								{deltaAjuste < 0 ? 'de' : 'a'}
+								{BUCKET_LABELS[ajuste.bucket]}
+							</p>
+							<p class="truncate text-xs text-muted-foreground">
+								{fechaLegible(ajuste.date)}{ajuste.description ? ` · ${ajuste.description}` : ''}
+							</p>
+						</div>
+						<!-- Con signo +/− como los ingresos, pero al revés de color: aquí el
+						     verde es el bolsillo que crece y el rojo el que se vacía. -->
+						<span
+							class="tabular shrink-0 text-sm font-semibold {deltaAjuste < 0
+								? 'text-red-600 dark:text-red-500'
+								: 'text-green-600 dark:text-green-500'}"
+						>
+							{deltaAjuste > 0 ? '+' : '−'}{formatoMoneda.format(Math.abs(deltaAjuste))}
+						</span>
+					</li>
 				{/if}
 			{/each}
 		</ul>
@@ -314,6 +377,14 @@
 	bind:abierto={transferenciaAbierta}
 	bind:origen={origenTransferencia}
 	saldos={data.bucketTotals}
+	moneda={data.user?.baseCurrency ?? 'CUP'}
+	errores={errores}
+	valores={valores}
+/>
+<AdjustmentDialog
+	bind:abierto={ajusteAbierto}
+	bind:bolsillo={bolsilloAjuste}
+	saldo={data.bucketTotals[bolsilloAjuste]}
 	moneda={data.user?.baseCurrency ?? 'CUP'}
 	errores={errores}
 	valores={valores}

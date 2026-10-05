@@ -2,6 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { and, desc, eq, sum } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
+	bucketAdjustments,
 	bucketAllocations,
 	bucketTransfers,
 	categories,
@@ -17,6 +18,7 @@ import {
 	movementUpdateSchema
 } from '$lib/validation/movements';
 import { transferSchema } from '$lib/validation/transfers';
+import { adjustmentSchema } from '$lib/validation/adjustments';
 import { fieldErrors, pick, type FieldErrors } from '$lib/forms';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -24,6 +26,10 @@ import type { Actions, PageServerLoad } from './$types';
 // Va en el mensaje de la excepción porque es lo único que llega intacto al catch:
 // cualquier otra cosa se propaga como error de verdad.
 const SIN_SALDO = 'SIN_SALDO';
+
+// Igual que SIN_SALDO pero para un ajuste que no cambia nada: contar exactamente
+// lo que el sistema ya tiene anotado no es un evento, es un error de dedo.
+const SIN_CAMBIO = 'SIN_CAMBIO';
 
 function round2(n: number): number {
 	return Math.round(n * 100) / 100;
@@ -48,7 +54,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 	if (!locals.user) redirect(303, '/login');
 	const userId = locals.user.id;
 
-	const [categoriasUsuario, recentMovements, sumasPorBolsillo, recentTransfers] = await Promise.all([
+	const [categoriasUsuario, recentMovements, sumasPorBolsillo, recentTransfers, recentAdjustments] =
+		await Promise.all([
 		// Las de los dos tipos, no solo las de ingreso: al editar un gasto hay que
 		// ofrecer las suyas. El diálogo filtra por el tipo del movimiento.
 		db
@@ -79,6 +86,14 @@ export const load: PageServerLoad = async ({ locals }) => {
 			.from(bucketTransfers)
 			.where(eq(bucketTransfers.userId, userId))
 			.orderBy(desc(bucketTransfers.date), desc(bucketTransfers.createdAt))
+			.limit(10),
+		// Los ajustes (gastos y correcciones por conteo) también son parte del
+		// historial: sin ellos el saldo de una tarjeta baja sin explicación visible.
+		db
+			.select()
+			.from(bucketAdjustments)
+			.where(eq(bucketAdjustments.userId, userId))
+			.orderBy(desc(bucketAdjustments.date), desc(bucketAdjustments.createdAt))
 			.limit(10)
 	]);
 
@@ -93,7 +108,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 	// La clave del return no puede llamarse `categories`: la importaría la tabla de
 	// Drizzle y se colaría en `data` en vez de las filas del usuario.
-	return { categories: categoriasUsuario, recentMovements, recentTransfers, bucketTotals };
+	return {
+		categories: categoriasUsuario,
+		recentMovements,
+		recentTransfers,
+		recentAdjustments,
+		bucketTotals
+	};
 };
 
 export const actions: Actions = {
@@ -372,6 +393,107 @@ export const actions: Actions = {
 					amount: [`No hay saldo suficiente en ${BUCKET_LABELS[from]}`]
 				};
 				return fail(400, { errors: sinSaldo, values });
+			}
+			throw error;
+		}
+
+		return { success: true };
+	},
+
+	// Quita dinero de un bolsillo, de las dos maneras que ofrece la UI: un gasto
+	// directo ('manual') o la diferencia entre lo que el usuario cuenta tener y lo
+	// que el sistema tiene anotado ('difference'). Ambas escriben un único delta
+	// con signo en el libro mayor, así que un gasto baja la tarjeta y una corrección
+	// al alza la sube.
+	adjustBucket: async (event) => {
+		if (!event.locals.user) redirect(303, '/login');
+		const userId = event.locals.user.id;
+
+		const formData = await event.request.formData();
+		const values = pick(formData, ['bucket', 'mode', 'amount', 'countedAmount', 'date', 'description']);
+
+		const parsed = adjustmentSchema.safeParse({
+			...values,
+			description: values.description || undefined
+		});
+
+		if (!parsed.success) {
+			return fail(400, { errors: fieldErrors(parsed.error), values });
+		}
+
+		const { bucket, mode, amount, countedAmount, date, description } = parsed.data;
+
+		try {
+			await db.transaction(async (tx) => {
+				// El mismo candado que serializa los traslados: el saldo se decide
+				// sobre las filas que hay ahora, y sin bloquear la fila del usuario
+				// dos ajustes simultáneos podrían leer el mismo saldo y vaciar el
+				// bolsillo dos veces.
+				await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for('update');
+
+				const [saldo] = await tx
+					.select({ total: sum(bucketAllocations.amount).mapWith(Number) })
+					.from(bucketAllocations)
+					.where(
+						and(eq(bucketAllocations.userId, userId), eq(bucketAllocations.bucket, bucket))
+					);
+
+				const saldoActual = round2(saldo?.total ?? 0);
+
+				// El delta se calcula aquí y no antes, con el saldo de verdad. En modo
+				// 'manual' el cliente no puede fijarlo; en 'difference' no podría
+				// calcularlo sin conocer estas mismas filas.
+				const delta =
+					mode === 'manual'
+						? round2(-(amount as number))
+						: round2((countedAmount as number) - saldoActual);
+
+				if (delta === 0) throw new Error(SIN_CAMBIO);
+
+				// round2 en los dos lados: sin él, un saldo como 1000.005 podría
+				// rechazar un gasto de 1000.00 por un decimal de más o de menos.
+				if (round2(saldoActual + delta) < 0) throw new Error(SIN_SALDO);
+
+				const [ajuste] = await tx
+					.insert(bucketAdjustments)
+					.values({
+						userId,
+						bucket,
+						amount: delta.toFixed(2),
+						mode,
+						// La evidencia de la resta solo tiene sentido si el monto salió
+						// de contar la plata; en un gasto manual queda nula.
+						countedAmount:
+							mode === 'difference' ? (countedAmount as number).toFixed(2) : null,
+						previousBalance: mode === 'difference' ? saldoActual.toFixed(2) : null,
+						date,
+						description: description ?? null
+					})
+					.returning({ id: bucketAdjustments.id });
+
+				await tx.insert(bucketAllocations).values({
+					userId,
+					adjustmentId: ajuste.id,
+					bucket,
+					amount: delta.toFixed(2)
+				});
+			});
+		} catch (error) {
+			// Las comprobaciones viven dentro de la transacción y la única forma de
+			// abortarla es lanzar. Solo estas dos marcas se traducen a un mensaje;
+			// cualquier otro error se propaga.
+			if (error instanceof Error && error.message === SIN_SALDO) {
+				const sinSaldo: FieldErrors = {
+					amount: [`No hay saldo suficiente en ${BUCKET_LABELS[bucket]}`]
+				};
+				return fail(400, { errors: sinSaldo, values });
+			}
+			if (error instanceof Error && error.message === SIN_CAMBIO) {
+				const sinCambio: FieldErrors =
+					mode === 'manual'
+						? { amount: ['El monto debe ser mayor que 0'] }
+						: { countedAmount: ['Esa es justo la plata que ya tenías anotada'] };
+				return fail(400, { errors: sinCambio, values });
 			}
 			throw error;
 		}
