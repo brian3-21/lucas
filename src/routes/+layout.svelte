@@ -9,9 +9,9 @@
 	let { children }: { children: Snippet } = $props();
 
 	/**
-	 * Colores reales de los tokens `--background` de `app.css`. Sirven para la
-	 * barra del navegador en móvil: sin esto queda blanca en modo oscuro.
-	 */
+	Estos archivos +layout, +error. Se aplican tambien en el directorio en que estan y sus subdirectorios. 
+	*/
+	
 	const themeColors = { light: '#ffffff', dark: '#0a0a0a' };
 </script>
 
@@ -20,12 +20,6 @@
 	<title>Lucas</title>
 </svelte:head>
 
-<!--
-	ModeWatcher gestiona la clase `dark` en <html> e inyecta en el <head> un script
-	bloqueante que la aplica antes del primer pintado (sin destello). También
-	se encarga del <meta name="theme-color">; no lo declaramos aquí para no
-	tener dos etiquetas y que el script no acabe Actualizando la equivocada.
--->
 <ModeWatcher {themeColors} />
 
 <Tooltip.Provider>

@@ -45,44 +45,26 @@
 	let { data, form } = $props();
 
 	let abierto = $state(false);
-	// Movimiento en edición, o null si el diálogo es un alta nueva. Lo guarda el
-	// diálogo para poder vaciar solo su copia sin tener que saber qué está editando.
 	let editando = $state<MovimientoEditable | null>(null);
-	// Bolsillo desde el que sale el dinero. Lo fija la tarjeta en la que se pulsa
-	// "Mover": el diálogo no deja elegir otro origen.
 	let origenTransferencia = $state<BucketKind>('short_term');
 	let transferenciaAbierta = $state(false);
-	// Bolsillo que se está ajustando y si el diálogo de ajuste está abierto. Igual
-	// que la transferencia, la tarjeta decide de qué bolsillo se quita plata.
 	let bolsilloAjuste = $state<BucketKind>('short_term');
 	let ajusteAbierto = $state(false);
-	// `page.form` no sirve para esto: sigue relleno tras un `fail(...)`, así que
-	// el botón se quedaría desactivado para siempre en el primer intento fallido.
 	let procesando = $state(false);
-	// Id del movimiento que se está borrando, para bloquear solo esa fila.
 	let borrando = $state<string | null>(null);
 
 	const errores = $derived(form?.errors ?? {});
 	const valores = $derived(form?.values ?? {});
 
-	// Los importes se pintan en la moneda base del usuario, no en una fija: el
-	// enum de Divisas ya incluye USD y los movimientos llevan su propia columna.
-	// `data.user` viene del layout de (protected); el hook ya garantiza sesión,
-	// pero el tipo de `locals.user` admite null, así que se cubre.
 	const formatoMoneda = $derived(
 		new Intl.NumberFormat('es-ES', { style: 'currency', currency: data.user?.baseCurrency ?? 'CUP' })
 	);
 	const formatoFecha = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' });
 
-	// `date` llega como 'YYYY-MM-DD'. Sin la 'T00:00:00', Date lo parsea como
-	// UTC y en zonas negativas pintaría el día anterior.
 	function fechaLegible(iso: string): string {
 		return formatoFecha.format(new Date(`${iso}T00:00:00`));
 	}
 
-	// Ingresos, traslados y ajustes se pintan en la misma lista y en el mismo orden:
-	// son tres maneras de mover el mismo dinero, aunque no todas cambien el total.
-	// La clave ordena por fecha y, a igualdad de fecha, por hora de creación.
 	const historial = $derived(
 		[
 			...data.recentMovements.map((movimiento) => ({
@@ -270,8 +252,6 @@
 													if (result.type === 'success') {
 														toast.success('Movimiento eliminado');
 													} else if (result.type === 'failure') {
-														// `result.data` viene como Record<string, unknown>, así que
-														// el mensaje hay que estrecharlo antes de dárselo al toast.
 														toast.error(
 															typeof result.data?.message === 'string'
 																? result.data.message
@@ -282,8 +262,6 @@
 											}}
 										>
 											<input type="hidden" name="id" value={movimiento.id} />
-											<!-- bits-ui renderiza el Cancel como <button> sin type, y dentro de un
-											     form eso es type="submit": sin esto, "Cancelar" borra igual. -->
 											<AlertDialogCancel
 												type="button"
 												class="cursor-pointer"
@@ -325,8 +303,6 @@
 									: ''}
 							</p>
 						</div>
-						<!-- Sin signo +/− como los ingresos: el dinero no entra ni sale de la
-						     cartera, solo cambia de bolsillo, y el título ya dice de cuál a cuál. -->
 						<span class="tabular shrink-0 text-sm font-semibold text-muted-foreground">
 							{formatoMoneda.format(Number(traslado.amount))}
 						</span>
@@ -351,8 +327,6 @@
 								{fechaLegible(ajuste.date)}{ajuste.description ? ` · ${ajuste.description}` : ''}
 							</p>
 						</div>
-						<!-- Con signo +/− como los ingresos, pero al revés de color: aquí el
-						     verde es el bolsillo que crece y el rojo el que se vacía. -->
 						<span
 							class="tabular shrink-0 text-sm font-semibold {deltaAjuste < 0
 								? 'text-red-600 dark:text-red-500'
