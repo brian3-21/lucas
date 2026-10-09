@@ -425,10 +425,7 @@ export const actions: Actions = {
 
 		try {
 			await db.transaction(async (tx) => {
-				// El mismo candado que serializa los traslados: el saldo se decide
-				// sobre las filas que hay ahora, y sin bloquear la fila del usuario
-				// dos ajustes simultáneos podrían leer el mismo saldo y vaciar el
-				// bolsillo dos veces.
+
 				await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for('update');
 
 				const [saldo] = await tx

@@ -38,7 +38,7 @@
 	let enviado = $state(false);
 	let procesando = $state(false);
 
-	// Las dos formas de quitar plata. Solo una se manda: el formulario no lleva el
+	// Las dos formas de quitar dinero. Solo una se manda: el formulario no lleva el
 	// campo de la otra, y el servidor además vuelve a validar cuál corresponde.
 	let modo = $state<'difference' | 'manual'>('difference');
 
@@ -103,11 +103,11 @@
 	     necesitan sitio para dos montos con decimales en la misma línea. -->
 	<DialogContent class="sm:max-w-md">
 		<DialogHeader>
-			<DialogTitle>Quitar plata de {BUCKET_LABELS[bolsillo]}</DialogTitle>
+			<DialogTitle>Quitar dinero de {BUCKET_LABELS[bolsillo]}</DialogTitle>
 			<DialogDescription>
 				{BUCKET_LABELS[bolsillo]} tiene
 				<span class="font-medium text-foreground">{formatoMoneda.format(saldoActual)}</span> anotados.
-				Cuenta cuánta plata hay de verdad para que se ajuste sola, o descuenta un gasto.
+				Cuenta cuánta dinero hay de verdad para que se ajuste sola, o descuenta un gasto.
 			</DialogDescription>
 		</DialogHeader>
 
@@ -122,11 +122,8 @@
 					procesando = false;
 					if (result.type === 'success') {
 						abierto = false;
-						toast.success(modo === 'manual' ? 'Plata descontada' : 'Ajuste aplicado');
+						toast.success(modo === 'manual' ? 'dinero descontada' : 'Ajuste aplicado');
 					} else if (result.type === 'failure') {
-						// `result.data` viene como Record<string, unknown>, así que el
-						// mensaje hay que estrecharlo. Los errores de campo se pintan
-						// solos con `erroresVisibles`.
 						toast.error(
 							typeof result.data?.message === 'string'
 								? result.data.message
@@ -149,10 +146,11 @@
 					<TabsTrigger value="manual">Cuánto gasté</TabsTrigger>
 				</TabsList>
 
+				{#if modo === 'difference'}
 				<TabsContent value="difference" class="pt-4">
 					<FieldGroup>
 						<Field data-invalid={!!erroresVisibles.countedAmount}>
-							<FieldLabel for="countedAmount">Cuánta plata hay de verdad</FieldLabel>
+							<FieldLabel for="countedAmount">Cuánta dinero hay ahora</FieldLabel>
 							<Input
 								id="countedAmount"
 								name="countedAmount"
@@ -185,7 +183,7 @@
 								</div>
 								{#if sinCambio}
 									<FieldError class="mt-2">
-										Es justo la plata que ya tenías anotada. Cambia el número para que
+										Es justo el dinero que ya tenías anotada. Cambia el número para que
 										ajuste algo.
 									</FieldError>
 								{:else}
@@ -213,11 +211,13 @@
 						{/if}
 					</FieldGroup>
 				</TabsContent>
+				{/if}
 
+				{#if modo === 'manual'}
 				<TabsContent value="manual" class="pt-4">
 					<FieldGroup>
 						<Field data-invalid={!!erroresVisibles.amount || excedeSaldo}>
-							<FieldLabel for="amount">Cuánta plata gasté</FieldLabel>
+							<FieldLabel for="amount">Cuánta dinero gasté</FieldLabel>
 							<Input
 								id="amount"
 								name="amount"
@@ -254,6 +254,7 @@
 						{/if}
 					</FieldGroup>
 				</TabsContent>
+				{/if}
 			</Tabs>
 
 			<FieldGroup class="mt-4">
@@ -296,7 +297,7 @@
 					{procesando
 						? 'Ajustando…'
 						: modo === 'manual'
-							? 'Restar plata'
+							? 'Restar dinero'
 							: 'Ajustar por la diferencia'}
 				</Button>
 			</DialogFooter>
