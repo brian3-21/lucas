@@ -208,7 +208,7 @@
 			</FieldGroup>
 
 			<DialogFooter class="mt-6">
-				<Button type="submit" disabled={procesando || excedeSaldo}>
+				<Button type="submit" style="cursor: pointer;" disabled={procesando || excedeSaldo}>
 					{procesando ? 'Moviendo…' : 'Mover dinero'}
 				</Button>
 			</DialogFooter>

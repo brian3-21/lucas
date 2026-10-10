@@ -293,7 +293,7 @@
 			</FieldGroup>
 
 			<DialogFooter class="mt-6">
-				<Button type="submit" disabled={procesando || excedeSaldo || sinCambio}>
+				<Button type="submit" style="cursor: pointer;" disabled={procesando || excedeSaldo || sinCambio}>
 					{procesando
 						? 'Ajustando…'
 						: modo === 'manual'
