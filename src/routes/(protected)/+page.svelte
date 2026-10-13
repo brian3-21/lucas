@@ -34,6 +34,7 @@
 	import {
 		ArrowRight,
 		ArrowRightLeft,
+		CirclePlus,
 		Pencil,
 		Plus,
 		Scale,
@@ -185,9 +186,10 @@
 					{@const movimiento = linea.movimiento}
 					<li class="flex items-center gap-3 px-4 py-3">
 						<span
-							class="size-2.5 shrink-0 rounded-full"
-							style:background-color={movimiento.category?.color ?? 'var(--muted-foreground)'}
-						></span>
+							class="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
+						>
+							<CirclePlus class="size-3.5"></CirclePlus>
+						</span>
 						<div class="min-w-0 flex-1">
 							<p class="truncate text-sm font-medium">
 								{movimiento.description || movimiento.category?.name || 'Ingreso'}
@@ -289,8 +291,8 @@
 						<span
 							class="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
 						>
-							<ArrowRightLeft class="size-3.5" />
-						</span>
+						<ArrowRightLeft class="size-3.5" />
+					</span>
 						<div class="min-w-0 flex-1">
 							<p class="flex items-center gap-1 truncate text-sm font-medium">
 								{BUCKET_LABELS[traslado.from]}
