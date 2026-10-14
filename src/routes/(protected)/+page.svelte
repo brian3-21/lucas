@@ -66,28 +66,7 @@
 		return formatoFecha.format(new Date(`${iso}T00:00:00`));
 	}
 
-	const historial = $derived(
-		[
-			...data.recentMovements.map((movimiento) => ({
-				tipo: 'movimiento' as const,
-				clave: `movimiento-${movimiento.id}`,
-				orden: `${movimiento.date} ${movimiento.createdAt.toISOString()}`,
-				movimiento
-			})),
-			...data.recentTransfers.map((traslado) => ({
-				tipo: 'traslado' as const,
-				clave: `traslado-${traslado.id}`,
-				orden: `${traslado.date} ${traslado.createdAt.toISOString()}`,
-				traslado
-			})),
-			...data.recentAdjustments.map((ajuste) => ({
-				tipo: 'ajuste' as const,
-				clave: `ajuste-${ajuste.id}`,
-				orden: `${ajuste.date} ${ajuste.createdAt.toISOString()}`,
-				ajuste
-			}))
-		].sort((a, b) => b.orden.localeCompare(a.orden))
-	);
+	const historial = $derived(data.historialPaginado);
 
 	function abrirNuevo(): void {
 		editando = null;
@@ -340,6 +319,28 @@
 				{/if}
 			{/each}
 		</ul>
+		{#if data.prevOffset !== null || data.hasMore}
+			<div class="flex items-center justify-between px-4 py-3 border-t">
+				{#if data.prevOffset !== null}
+					<a
+						href="?offset={data.prevOffset}"
+						class="text-sm text-muted-foreground hover:text-foreground"
+					>
+						← Anterior
+					</a>
+				{:else}
+					<span></span>
+				{/if}
+				{#if data.hasMore}
+					<a
+						href="?offset={data.nextOffset}"
+						class="text-sm text-muted-foreground hover:text-foreground"
+					>
+						Siguiente →
+					</a>
+				{/if}
+			</div>
+		{/if}
 	</section>
 {/if}
 <MovimientoDialog

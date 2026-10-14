@@ -20,6 +20,7 @@ import {
 import { transferSchema } from '$lib/validation/transfers';
 import { adjustmentSchema } from '$lib/validation/adjustments';
 import { fieldErrors, pick, type FieldErrors } from '$lib/forms';
+import { getOffset, PAGE_SIZE } from '$lib/server/pagination';
 import type { Actions, PageServerLoad } from './$types';
 
 // Marca para abortar la transacción cuando el bolsillo de origen no tiene saldo.
@@ -49,10 +50,11 @@ function filasReparto(userId: string, movementId: string, amount: number, pcts: 
 	];
 }
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
 	// El hook ya redirige a /login si no hay sesión; esto solo satisface a TS.
 	if (!locals.user) redirect(303, '/login');
 	const userId = locals.user.id;
+	const offset = getOffset(url);
 
 	const [categoriasUsuario, recentMovements, sumasPorBolsillo, recentTransfers, recentAdjustments] =
 		await Promise.all([
@@ -67,7 +69,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 			where: eq(movements.userId, userId),
 			with: { category: true },
 			orderBy: [desc(movements.date), desc(movements.createdAt)],
-			limit: 10
+			limit: PAGE_SIZE + 1,
+			offset
 		}),
 		// Suma con signo: los ingresos suman y las salidas de una transferencia
 		// restan, así que el saldo de cada tarjeta sale de aquí sin más contabilidad.
@@ -86,7 +89,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 			.from(bucketTransfers)
 			.where(eq(bucketTransfers.userId, userId))
 			.orderBy(desc(bucketTransfers.date), desc(bucketTransfers.createdAt))
-			.limit(10),
+			.limit(PAGE_SIZE + 1)
+			.offset(offset),
 		// Los ajustes (gastos y correcciones por conteo) también son parte del
 		// historial: sin ellos el saldo de una tarjeta baja sin explicación visible.
 		db
@@ -94,7 +98,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 			.from(bucketAdjustments)
 			.where(eq(bucketAdjustments.userId, userId))
 			.orderBy(desc(bucketAdjustments.date), desc(bucketAdjustments.createdAt))
-			.limit(10)
+			.limit(PAGE_SIZE + 1)
+			.offset(offset)
 	]);
 
 	const bucketTotals: Record<BucketKind, number> = {
@@ -106,13 +111,40 @@ export const load: PageServerLoad = async ({ locals }) => {
 		bucketTotals[fila.bucket] = fila.total;
 	}
 
+	const fusionado = [
+		...recentMovements.map((movimiento) => ({
+			tipo: 'movimiento' as const,
+			clave: `movimiento-${movimiento.id}`,
+			orden: `${movimiento.date} ${movimiento.createdAt.toISOString()}`,
+			movimiento
+		})),
+		...recentTransfers.map((traslado) => ({
+			tipo: 'traslado' as const,
+			clave: `traslado-${traslado.id}`,
+			orden: `${traslado.date} ${traslado.createdAt.toISOString()}`,
+			traslado
+		})),
+		...recentAdjustments.map((ajuste) => ({
+			tipo: 'ajuste' as const,
+			clave: `ajuste-${ajuste.id}`,
+			orden: `${ajuste.date} ${ajuste.createdAt.toISOString()}`,
+			ajuste
+		}))
+	].sort((a, b) => b.orden.localeCompare(a.orden));
+
+	const historialPaginado = fusionado.slice(0, PAGE_SIZE);
+	const hasMore = fusionado.length > PAGE_SIZE;
+	const nextOffset = hasMore ? offset + PAGE_SIZE : null;
+	const prevOffset = offset > 0 ? Math.max(0, offset - PAGE_SIZE) : null;
+
 	// La clave del return no puede llamarse `categories`: la importaría la tabla de
 	// Drizzle y se colaría en `data` en vez de las filas del usuario.
 	return {
 		categories: categoriasUsuario,
-		recentMovements,
-		recentTransfers,
-		recentAdjustments,
+		historialPaginado,
+		hasMore,
+		nextOffset,
+		prevOffset,
 		bucketTotals
 	};
 };
