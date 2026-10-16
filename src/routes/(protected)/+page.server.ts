@@ -102,15 +102,15 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			.offset(offset),
 		// Conteo total para la paginación por número de página
 		db
-			.select({ count: sql<number>`count(*)` })
+			.select({ count: sql<number>`count(*)`.mapWith(Number) })
 			.from(movements)
 			.where(eq(movements.userId, userId)),
 		db
-			.select({ count: sql<number>`count(*)` })
+			.select({ count: sql<number>`count(*)`.mapWith(Number) })
 			.from(bucketTransfers)
 			.where(eq(bucketTransfers.userId, userId)),
 		db
-			.select({ count: sql<number>`count(*)` })
+			.select({ count: sql<number>`count(*)`.mapWith(Number) })
 			.from(bucketAdjustments)
 			.where(eq(bucketAdjustments.userId, userId))
 	]);
