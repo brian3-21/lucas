@@ -55,6 +55,8 @@
 	let procesando = $state(false);
 	let borrando = $state<string | null>(null);
 
+	console.log(data)
+
 	const errores = $derived(form?.errors ?? {});
 	const valores = $derived(form?.values ?? {});
 
@@ -320,9 +322,9 @@
 				{/if}
 			{/each}
 		</ul>
-		{#if data.total > 0}
+		{#if data.totalItems > 0}
 			<Pagination.Root
-				count={data.total}
+				count={data.totalItems}
 				perPage={10}
 				page={data.page}
 				onPageChange={(e) => {

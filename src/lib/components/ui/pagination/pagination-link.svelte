@@ -29,7 +29,7 @@
 	data-size={size}
 	class={cn(
 		buttonVariants({ size, variant: isActive ? "outline" : "ghost" }),
-		"",
+		"cursor-pointer",
 		className
 	)}
 	{...restProps}

@@ -16,7 +16,7 @@
 	aria-label="Go to previous page"
 	class={cn(
 		buttonVariants({ variant: "ghost", size: "default" }),
-		"pl-1.5!",
+		"pl-1.5! cursor-pointer",
 		className
 	)}
 	{...restProps}
