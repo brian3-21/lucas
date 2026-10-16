@@ -355,6 +355,13 @@
 				{/snippet}
 			</Pagination.Root>
 		{/if}
+		{#if data.historialPaginado.length === 0 && data.prevOffset !== null}
+			<div class="flex justify-center px-4 py-3 border-t">
+				<a href="?offset={data.prevOffset}" class="text-sm text-muted-foreground hover:text-foreground">
+					← Volver a la página anterior
+				</a>
+			</div>
+		{/if}
 	</section>
 {/if}
 <MovimientoDialog

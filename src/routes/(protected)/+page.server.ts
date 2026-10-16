@@ -56,7 +56,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const userId = locals.user.id;
 	const offset = getOffset(url);
 
-	const [categoriasUsuario, recentMovements, sumasPorBolsillo, recentTransfers, recentAdjustments, totalCounts] =
+	const [categoriasUsuario, recentMovements, sumasPorBolsillo, recentTransfers, recentAdjustments, ...totalCounts] =
 		await Promise.all([
 		// Las de los dos tipos, no solo las de ingreso: al editar un gasto hay que
 		// ofrecer las suyas. El diálogo filtra por el tipo del movimiento.
@@ -116,9 +116,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	]);
 
 	const total =
-		(totalCounts[0]?.count ?? 0) +
-		(totalCounts[1]?.count ?? 0) +
-		(totalCounts[2]?.count ?? 0);
+		(totalCounts[0]?.[0]?.count ?? 0) +
+		(totalCounts[1]?.[0]?.count ?? 0) +
+		(totalCounts[2]?.[0]?.count ?? 0);
 
 	const bucketTotals: Record<BucketKind, number> = {
 		short_term: 0,
