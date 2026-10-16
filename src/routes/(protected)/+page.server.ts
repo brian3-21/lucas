@@ -115,10 +115,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			.where(eq(bucketAdjustments.userId, userId))
 	]);
 
-	const total =
-		(totalCounts[0]?.[0]?.count ?? 0) +
-		(totalCounts[1]?.[0]?.count ?? 0) +
-		(totalCounts[2]?.[0]?.count ?? 0);
+	const totalItems = totalCounts.reduce(
+    (sum, rows) => sum + (rows[0]?.count ?? 0),
+    0
+);
 
 	const bucketTotals: Record<BucketKind, number> = {
 		short_term: 0,
@@ -164,7 +164,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		nextOffset,
 		prevOffset,
 		bucketTotals,
-		total,
+		totalItems,
 		page: Math.floor(offset / PAGE_SIZE) + 1
 	};
 };
