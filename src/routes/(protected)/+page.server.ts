@@ -1,5 +1,5 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { and, desc, eq, sum } from 'drizzle-orm';
+import { and, desc, eq, sql, sum } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
 	bucketAdjustments,
@@ -56,7 +56,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const userId = locals.user.id;
 	const offset = getOffset(url);
 
-	const [categoriasUsuario, recentMovements, sumasPorBolsillo, recentTransfers, recentAdjustments] =
+	const [categoriasUsuario, recentMovements, sumasPorBolsillo, recentTransfers, recentAdjustments, totalCounts] =
 		await Promise.all([
 		// Las de los dos tipos, no solo las de ingreso: al editar un gasto hay que
 		// ofrecer las suyas. El diálogo filtra por el tipo del movimiento.
@@ -99,8 +99,26 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			.where(eq(bucketAdjustments.userId, userId))
 			.orderBy(desc(bucketAdjustments.date), desc(bucketAdjustments.createdAt))
 			.limit(PAGE_SIZE + 1)
-			.offset(offset)
+			.offset(offset),
+		// Conteo total para la paginación por número de página
+		db
+			.select({ count: sql<number>`count(*)` })
+			.from(movements)
+			.where(eq(movements.userId, userId)),
+		db
+			.select({ count: sql<number>`count(*)` })
+			.from(bucketTransfers)
+			.where(eq(bucketTransfers.userId, userId)),
+		db
+			.select({ count: sql<number>`count(*)` })
+			.from(bucketAdjustments)
+			.where(eq(bucketAdjustments.userId, userId))
 	]);
+
+	const total =
+		(totalCounts[0]?.count ?? 0) +
+		(totalCounts[1]?.count ?? 0) +
+		(totalCounts[2]?.count ?? 0);
 
 	const bucketTotals: Record<BucketKind, number> = {
 		short_term: 0,
@@ -145,7 +163,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		hasMore,
 		nextOffset,
 		prevOffset,
-		bucketTotals
+		bucketTotals,
+		total,
+		page: Math.floor(offset / PAGE_SIZE) + 1
 	};
 };
 

@@ -31,6 +31,7 @@
 		EmptyHeader,
 		EmptyTitle
 	} from '$lib/components/ui/empty';
+	import * as Pagination from '$lib/components/ui/pagination';
 	import {
 		ArrowRight,
 		ArrowRightLeft,
@@ -319,27 +320,40 @@
 				{/if}
 			{/each}
 		</ul>
-		{#if data.prevOffset !== null || data.hasMore}
-			<div class="flex items-center justify-between px-4 py-3 border-t">
-				{#if data.prevOffset !== null}
-					<a
-						href="?offset={data.prevOffset}"
-						class="text-sm text-muted-foreground hover:text-foreground"
-					>
-						← Anterior
-					</a>
-				{:else}
-					<span></span>
-				{/if}
-				{#if data.hasMore}
-					<a
-						href="?offset={data.nextOffset}"
-						class="text-sm text-muted-foreground hover:text-foreground"
-					>
-						Siguiente →
-					</a>
-				{/if}
-			</div>
+		{#if data.total > 0}
+			<Pagination.Root
+				count={data.total}
+				perPage={10}
+				page={data.page}
+				onPageChange={(e) => {
+					const params = new URLSearchParams(window.location.search);
+					params.set('offset', String((e - 1) * 10));
+					window.location.search = params.toString();
+				}}
+				class="mx-0 w-auto border-t"
+			>
+				{#snippet children({ pages, currentPage })}
+					<Pagination.Content class="gap-1">
+						<Pagination.Item>
+							<Pagination.Previous />
+						</Pagination.Item>
+						{#each pages as p (p.key)}
+							{#if p.type === "ellipsis"}
+								<Pagination.Item>
+									<Pagination.Ellipsis />
+								</Pagination.Item>
+							{:else}
+								<Pagination.Item>
+									<Pagination.Link page={p} isActive={currentPage === p.value}>{p.value}</Pagination.Link>
+								</Pagination.Item>
+							{/if}
+						{/each}
+						<Pagination.Item>
+							<Pagination.Next />
+						</Pagination.Item>
+					</Pagination.Content>
+				{/snippet}
+			</Pagination.Root>
 		{/if}
 	</section>
 {/if}
