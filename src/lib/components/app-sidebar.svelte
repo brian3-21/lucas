@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import NavUser from '$lib/components/nav-user.svelte';
 	import * as Sidebar from '$lib/components/ui/sidebar';
-	import { History, LayoutDashboard, Wallet } from '@lucide/svelte';
+	import { Grid3x3, History, LayoutDashboard, Wallet } from '@lucide/svelte';
 
 	let { user }: { user: { name: string; email: string } } = $props();
 
@@ -10,7 +10,8 @@
 	// pero todavía no: hay que decidir el modelo antes de enlazar a rutas que no existen.
 	const navegacion = [
 		{ titulo: 'Resumen', href: '/', icono: LayoutDashboard },
-		{ titulo: 'Movimientos', href: '/movimientos', icono: History }
+		{ titulo: 'Movimientos', href: '/movimientos', icono: History },
+		{ titulo: 'Matriz ahorro', href: '/matriz-ahorro', icono: Grid3x3 }
 	];
 
 	function activo(href: string): boolean {
