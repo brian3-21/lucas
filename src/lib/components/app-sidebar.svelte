@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import NavUser from '$lib/components/nav-user.svelte';
 	import * as Sidebar from '$lib/components/ui/sidebar';
-	import { Grid3x3, History, LayoutDashboard, Wallet } from '@lucide/svelte';
+	import { Grid3x3, History, LayoutDashboard, Wallet, Atom } from '@lucide/svelte';
 
 	let { user }: { user: { name: string; email: string } } = $props();
 
@@ -11,7 +11,8 @@
 	const navegacion = [
 		{ titulo: 'Resumen', href: '/', icono: LayoutDashboard },
 		{ titulo: 'Movimientos', href: '/movimientos', icono: History },
-		{ titulo: 'Matriz ahorro', href: '/matriz-ahorro', icono: Grid3x3 }
+		{ titulo: 'Matriz ahorro', href: '/matriz-ahorro', icono: Grid3x3 },
+		{ titulo: 'Estadisticas', href: '/estadisticas', icono: Atom }
 	];
 
 	function activo(href: string): boolean {
