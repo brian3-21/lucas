@@ -8,10 +8,6 @@
 
 	let { children }: { children: Snippet } = $props();
 
-	/**
-	Estos archivos +layout, +error. Se aplican tambien en el directorio en que estan y sus subdirectorios. 
-	*/
-	
 	const themeColors = { light: '#ffffff', dark: '#0a0a0a' };
 </script>
 

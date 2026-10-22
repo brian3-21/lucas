@@ -6,8 +6,6 @@
 
 	let { user }: { user: { name: string; email: string } } = $props();
 
-	// Resumen y movimientos por ahora. Cuentas y presupuestos están pensados,
-	// pero todavía no: hay que decidir el modelo antes de enlazar a rutas que no existen.
 	const navegacion = [
 		{ titulo: 'Resumen', href: '/', icono: LayoutDashboard },
 		{ titulo: 'Movimientos', href: '/movimientos', icono: History },

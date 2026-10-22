@@ -3,11 +3,7 @@ import { z } from 'zod';
 /** Errores por campo, listos para pintar junto a cada input. */
 export type FieldErrors = Record<string, string[] | undefined>;
 
-/**
- * Convierte un error de zod en `{ campo: [mensajes] }`.
- *
- * En zod 4 esto es `z.flattenError`. Antes se llamaba `error.flatten()`.
- */
+/** Convierte un error de zod en `{ campo: [mensajes] }`. */
 export function fieldErrors(error: z.ZodError): FieldErrors {
 	return z.flattenError(error).fieldErrors as FieldErrors;
 }

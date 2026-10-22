@@ -167,7 +167,6 @@
 		-webkit-font-smoothing: antialiased;
 	}
 
-	/* Números tabulares en todas las cifras monetaryas */
 	.tabular {
 		font-variant-numeric: tabular-nums;
 	}

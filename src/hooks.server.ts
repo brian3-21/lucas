@@ -40,7 +40,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 
 		if (!event.locals.user && event.route.id?.startsWith(PROTECTED_PREFIX)) {
-			// Guardamos a dónde quería ir para devolvérselo tras el login.
 			const from = event.url.pathname + event.url.search;
 			redirect(303, `/login?redirectTo=${encodeURIComponent(from)}`);
 		}
@@ -84,8 +83,6 @@ function friendlyError(err: unknown, context: string): unknown {
  * navegador como una página en blanco y al log del servidor como un WARNING.
  */
 export const handleError: HandleServerError = ({ error, event, status }) => {
-	// Red de seguridad: `handle` ya convierte la BD caída en un 503, pero si algún
-	// día sale por otro camino, al menos el mensaje le dice al usuario qué pasó.
 	const baseDeDatosCaida = isDatabaseUnavailable(error);
 
 	// Los 404 son ruido esperado (enlaces viejos, escáneres) y no interesa

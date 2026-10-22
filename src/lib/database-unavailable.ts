@@ -31,7 +31,6 @@ export const DATABASE_UNAVAILABLE_TEXT = `${DATABASE_UNAVAILABLE_MESSAGE} ${DATA
  *   de apagado y de configuración que también significa "no hay Postgres aquí".
  */
 const CONNECTION_CODES = new Set([
-	// Red
 	'ECONNREFUSED',
 	'ECONNRESET',
 	'ECONNABORTED',
@@ -43,7 +42,6 @@ const CONNECTION_CODES = new Set([
 	'EHOSTUNREACH',
 	'ENETUNREACH',
 	'EADDRNOTAVAIL',
-	// Postgres: connection_exception
 	'08000',
 	'08001',
 	'08003',
@@ -51,7 +49,6 @@ const CONNECTION_CODES = new Set([
 	'08006',
 	'08007',
 	'08P01',
-	// Postgres: apagado / no disponible / mal configurada
 	'57P01', // admin_shutdown
 	'57P02', // crash_shutdown
 	'57P03', // cannot_connect_now

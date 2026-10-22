@@ -11,15 +11,9 @@ const DAY_MS = 1000 * 60 * 60 * 24;
 
 export const SESSION_COOKIE_NAME = 'lucas_session';
 
-/** 30 días */
 const SESSION_LIFETIME_MS = 30 * DAY_MS;
 
-/** Renovar la cookie si le quedan menos de 15 días de vida */
 const SESSION_RENEWAL_THRESHOLD_MS = 15 * DAY_MS;
-
-/* ------------------------------------------------------------------ */
-/* Contraseñas                                                         */
-/* ------------------------------------------------------------------ */
 
 /**
  * argon2id con los parámetros por defecto de @node-rs/argon2, que coinciden
@@ -39,10 +33,6 @@ export async function verifyPassword(passwordHash: string, password: string): Pr
 		return false;
 	}
 }
-
-/* ------------------------------------------------------------------ */
-/* Sesiones                                                            */
-/* ------------------------------------------------------------------ */
 
 function generateSessionToken(): string {
 	return randomBytes(32).toString('base64url');
@@ -110,14 +100,9 @@ export async function invalidateSession(sessionId: string): Promise<void> {
 	await db.delete(sessions).where(eq(sessions.id, sessionId));
 }
 
-/** Cierra todas las sesiones de un usuario. Útil si más adelante hay cambio de contraseña. */
 export async function invalidateUserSessions(userId: string): Promise<void> {
 	await db.delete(sessions).where(eq(sessions.userId, userId));
 }
-
-/* ------------------------------------------------------------------ */
-/* Cookies                                                             */
-/* ------------------------------------------------------------------ */
 
 function sessionCookieOptions(expiresAt?: Date) {
 	return {
@@ -133,7 +118,6 @@ export function setSessionTokenCookie(event: RequestEvent, token: string, sessio
 	event.cookies.set(SESSION_COOKIE_NAME, token, sessionCookieOptions(session.expiresAt));
 }
 
-/** Reescribe la cookie con la expiración renovada (sliding renewal). */
 export function refreshSessionTokenCookie(
 	event: RequestEvent,
 	token: string,
@@ -145,10 +129,6 @@ export function refreshSessionTokenCookie(
 export function clearSessionTokenCookie(event: RequestEvent): void {
 	event.cookies.delete(SESSION_COOKIE_NAME, sessionCookieOptions());
 }
-
-/* ------------------------------------------------------------------ */
-/* Redirecciones                                                       */
-/* ------------------------------------------------------------------ */
 
 /**
  * Solo permite rutas internas. Sin esto, un atacante te manda este enlace:

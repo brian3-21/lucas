@@ -122,10 +122,8 @@ export const goals = pgTable(
 	(t) => [index('goals_user_id_idx').on(t.userId)]
 );
 
-// Mover dinero de un bolsillo a otro. No es un ingreso ni un gasto: el dinero
-// solo cambia de sitio, así que vive en su propia tabla en vez de colgarse de
-// `movements`. El CHECK de origen != destino y el saldo (que comprueba la
-// acción, no la BD) hacen que nunca se pueda crear un traslado sin destino.
+// Traslado entre bolsillos: el dinero solo cambia de sitio, no es ingreso ni gasto.
+// El CHECK de origen != destino impide crear un traslado sin destino.
 export const bucketTransfers = pgTable(
 	'bucket_transfers',
 	{
@@ -152,16 +150,9 @@ export const bucketTransfers = pgTable(
 	]
 );
 
-// Ajuste de un bolsillo: dinero que sale (gasto real) o una corrección de lo
-// que el sistema creía que había. A diferencia de un traslado, aquí el dinero sí
-// desaparece de los tres bolsillos, así que no puede colgarse de
-// `bucket_transfers`: necesita su propio origen en el libro mayor.
-//
-// `mode` guarda cómo se decidió el monto. En 'manual' es un gasto directo
-// (siempre negativo). En 'difference' el usuario contó cuánta plata tiene y el
-// servidor calculó la resta, que puede salir positiva (contó más de lo que decía
-// el sistema); se guardan `countedAmount` y `previousBalance` para poder auditar
-// esa diferencia más adelante.
+// Ajuste de un bolsillo: gasto real o corrección tras contar el dinero. En
+// 'manual' el monto es negativo; en 'difference' se guardan lo contado y el saldo
+// previo para poder auditar la diferencia.
 export const bucketAdjustments = pgTable(
 	'bucket_adjustments',
 	{
@@ -201,10 +192,8 @@ export const bucketAdjustments = pgTable(
 	]
 );
 
-// Libro mayor de repartos: cada ingreso genera una fila por bolsillo con el
-// signo + y cada transferencia genera dos, una − y otra +, de forma que el
-// saldo de cada tarjeta es SUM(amount) GROUP BY bucket. El dinero nunca queda
-// "en el aire": las dos filas de un traslado siempre suman cero.
+// Libro mayor de repartos: el saldo de cada tarjeta es SUM(amount) GROUP BY bucket.
+// Las dos filas de un traslado siempre suman cero.
 export const bucketAllocations = pgTable(
 	'bucket_allocations',
 	{
@@ -288,8 +277,6 @@ export const goalsRelations = relations(goals, ({ one }) => ({
 
 export const bucketAllocationsRelations = relations(bucketAllocations, ({ one }) => ({
 	user: one(users, { fields: [bucketAllocations.userId], references: [users.id] }),
-	// movementId, transferId y adjustmentId son nullables (solo se rellena uno de
-	// los tres), así que Drizzle ya marca estas relaciones como anulables por su cuenta.
 	movement: one(movements, {
 		fields: [bucketAllocations.movementId],
 		references: [movements.id]

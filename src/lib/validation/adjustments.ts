@@ -30,20 +30,8 @@ const contadoSchema = z.preprocess(
 		.multipleOf(0.01, 'Máximo 2 decimales')
 );
 
-/**
- * Un ajuste quita dinero de un bolsillo, y hay dos maneras de decirlo:
- *
- * - `manual`: un gasto directo, "saqué 500". El monto siempre sale hacia fuera,
- *   nunca hacia dentro; para sumar está la otra forma.
- * - `difference`: el usuario contó cuánta plata tiene y el servidor calcula la
- *   resta contra el saldo real del momento. Esa diferencia puede salir positiva
- *   (contó más de lo que el sistema tenía anotado) o negativa.
- *
- * `amount` y `countedAmount` son opcionales en el esquema base y obligatorios
- * según el modo: son campos distintos según la forma elegida, y el que no aplica
- * ni se manda. El delta nunca viene del cliente, porque depende de las filas que
- * ya hay en el libro mayor; lo calcula el servidor con el saldo real.
- */
+// `manual` resta un gasto directo; `difference` compara lo contado con el saldo
+// y el servidor calcula el delta. Solo se manda el campo del modo elegido.
 export const adjustmentSchema = z
 	.object({
 		bucket: bolsillo,

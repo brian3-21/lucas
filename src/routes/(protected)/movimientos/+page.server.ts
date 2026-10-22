@@ -55,7 +55,6 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			.orderBy(desc(bucketAdjustments.date), desc(bucketAdjustments.createdAt))
 			.limit(PAGE_SIZE + 1)
 			.offset(offset),
-		// Conteo total para la paginación por número de página
 		db
 			.select({ count: sql<number>`count(*)`.mapWith(Number) })
 			.from(movements)
@@ -98,8 +97,6 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const nextOffset = hasMore ? offset + PAGE_SIZE : null;
 	const prevOffset = offset > 0 ? Math.max(0, offset - PAGE_SIZE) : null;
 
-	// La clave del return no puede llamarse `categories`: la importaría la tabla de
-	// Drizzle y se colaría en `data` en vez de las filas del usuario.
 	return {
 		categories: categoriasUsuario,
 		historialPaginado,

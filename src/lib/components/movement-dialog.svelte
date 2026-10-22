@@ -73,7 +73,6 @@
 	}
 
 	$effect(() => {
-		// Cada vez que se abre, el formulario arranca limpio.
 		if (abierto) enviado = false;
 	});
 </script>

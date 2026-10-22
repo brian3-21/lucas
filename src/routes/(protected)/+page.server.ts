@@ -65,8 +65,6 @@ export const load: PageServerLoad = async ({ locals }) => {
 		bucketTotals[fila.bucket] = fila.total;
 	}
 
-	// La clave del return no puede llamarse `categories`: la importaría la tabla de
-	// Drizzle y se colaría en `data` en vez de las filas del usuario.
 	return {
 		categories: categoriasUsuario,
 		bucketTotals
@@ -137,7 +135,6 @@ export const actions: Actions = {
 				.values({
 					userId,
 					type: 'income',
-					// numeric se guarda como string; toFixed fija los 2 decimales.
 					amount: amount.toFixed(2),
 					date,
 					description: description ?? null,

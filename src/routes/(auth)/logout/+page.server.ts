@@ -3,7 +3,7 @@ import { clearSessionTokenCookie, invalidateSession } from '$lib/server/auth';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {
-	// Logout es una acción con efeito: nunca por GET.
+	// Logout es una acción con efecto: nunca por GET.
 	redirect(303, '/');
 };
 

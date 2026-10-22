@@ -13,9 +13,6 @@ declare global {
 			 */
 			code?: string;
 		}
-		// interface PageData {}
-		// interface PageState {}
-		// interface Platform {}
 	}
 }
 

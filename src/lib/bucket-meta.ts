@@ -4,9 +4,6 @@ import type { BucketKind } from '$lib/server/db/schema';
 // desde los componentes aunque el enum viva en un archivo de servidor.
 export type { BucketKind };
 
-// Datos de presentación de los bolsillos. Viven aquí, y no en el enum de la BD
-// ni en $lib/server, porque los componentes del cliente los necesitan igual.
-
 // El orden en el que se pintan las tarjetas y los <select> de una transferencia.
 // El enum no fija ningún orden, así que este es el único sitio donde se decide
 // el de la interfaz.
