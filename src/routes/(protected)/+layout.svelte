@@ -17,7 +17,9 @@
 
 	<SidebarInset>
 		<header class="flex h-14 shrink-0 items-center justify-between gap-2 border-b px-4">
-			<SidebarTrigger class="-ml-1" />
+			<SidebarTrigger
+				class="-ml-1 cursor-pointer transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+			/>
 			<ThemeSwitcher />
 		</header>
 
