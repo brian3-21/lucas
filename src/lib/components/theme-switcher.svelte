@@ -17,7 +17,7 @@
 	onclick={toggleMode}
 	variant="outline"
 	size="icon"
-	class={cn('relative', className)}
+	class={cn('relative cursor-pointer', className)}
 	title="Cambiar entre claro y oscuro"
 >
 	<Sun class="size-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
